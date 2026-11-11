@@ -6,20 +6,24 @@ async function main() {
   console.log("🌱 Seeding Omegle database...");
 
   // 1. Admin account
-  const adminPasswordHash = await bcrypt.hash("admin123", 10);
+  const adminPasswordHash = await bcrypt.hash("Muditjain@1234", 10);
   const admin = await prisma.user.upsert({
-    where: { email: "admin@omegle.com" },
-    update: {},
+    where: { email: "muditjain2204@gmail.com" },
+    update: {
+      passwordHash: adminPasswordHash,
+      role: Role.ADMIN,
+      isVerified: true,
+    },
     create: {
-      email: "admin@omegle.com",
+      email: "muditjain2204@gmail.com",
       passwordHash: adminPasswordHash,
       role: Role.ADMIN,
       isVerified: true,
       profile: {
         create: {
-          displayName: "System Administrator",
-          age: 32,
-          gender: Gender.OTHER,
+          displayName: "Mudit Jain",
+          age: 23,
+          gender: Gender.MALE,
           avatarUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=600&auto=format&fit=crop&q=80",
           isOnline: true,
         },

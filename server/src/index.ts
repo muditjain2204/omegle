@@ -12,7 +12,7 @@ import paymentsRoutes from "./routes/payments.routes";
 import safetyRoutes from "./routes/safety.routes";
 import adminRoutes from "./routes/admin.routes";
 import cronRoutes from "./routes/cron.routes";
-import { setupSocketServer } from "./socket";
+import { setupSocketServer, getLiveOnlineCount } from "./socket";
 import { initCronJobs } from "./cron";
 
 const app = express();
@@ -24,6 +24,11 @@ app.use(express.json());
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Accurate real-time online count endpoint
+app.get("/api/stats/online", (req, res) => {
+  res.json({ count: getLiveOnlineCount() });
 });
 
 // App routes

@@ -21,7 +21,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { getAdminOverview, getAdminReports, actOnReport, fetchWithAuth, grantUserVip } from "@/lib/api";
+import { getAdminOverview, getAdminReports, actOnReport, fetchWithAuth, grantUserVip, API_BASE_URL } from "@/lib/api";
 
 export default function AdminDashboardPage() {
   const [metrics, setMetrics] = useState<any>(null);
@@ -38,7 +38,7 @@ export default function AdminDashboardPage() {
   const [vipGrantError, setVipGrantError] = useState<string | null>(null);
 
   // Admin login form states
-  const [adminEmail, setAdminEmail] = useState("");
+  const [adminEmail, setAdminEmail] = useState("muditjain2204@gmail.com");
   const [adminPassword, setAdminPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -69,7 +69,7 @@ export default function AdminDashboardPage() {
     setLoginError(null);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: adminEmail, password: adminPassword }),
@@ -187,7 +187,7 @@ export default function AdminDashboardPage() {
                   required
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
-                  placeholder="admin@omegle.com"
+                  placeholder="muditjain2204@gmail.com"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -223,8 +223,9 @@ export default function AdminDashboardPage() {
             </form>
 
             <div className="text-center pt-2 border-t border-slate-800/80">
-              <span className="text-[11px] text-slate-500">
-                Default Credentials: <code className="text-slate-400 font-mono">admin@omegle.com</code> / <code className="text-slate-400 font-mono">admin123</code>
+              <span className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
+                <Lock className="h-3 w-3 text-slate-500" />
+                <span>Restricted to authorized system administrators only</span>
               </span>
             </div>
           </div>

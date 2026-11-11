@@ -24,7 +24,8 @@ import {
 import Navbar from "@/components/Navbar";
 import QuickStartModal from "@/components/QuickStartModal";
 import PricingModal from "@/components/PricingModal";
-import { getCurrentUser, UserProfile } from "@/lib/api";
+import { getCurrentUser, UserProfile, getOnlineCount } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 
 export default function LandingPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -32,9 +33,26 @@ export default function LandingPage() {
   const [quickStartMode, setQuickStartMode] = useState<"video" | "text">("video");
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [selectedProductHighlight, setSelectedProductHighlight] = useState<string | undefined>();
+  const [onlineCount, setOnlineCount] = useState<number>(0);
 
   useEffect(() => {
     getCurrentUser().then((u) => setUser(u));
+
+    getOnlineCount().then((count) => setOnlineCount(count));
+
+    const socket = getSocket();
+    const handleOnlineCount = (data: { count: number }) => {
+      if (typeof data?.count === "number") {
+        setOnlineCount(data.count);
+      }
+    };
+
+    socket.on("online-count", handleOnlineCount);
+    socket.emit("get-online-count");
+
+    return () => {
+      socket.off("online-count", handleOnlineCount);
+    };
   }, []);
 
   const openQuick = (mode: "video" | "text") => {
@@ -68,7 +86,11 @@ export default function LandingPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
-              <span>14,290+ verified people online right now</span>
+              <span>
+                {onlineCount === 0
+                  ? "0 verified people online right now"
+                  : `${onlineCount.toLocaleString()} verified ${onlineCount === 1 ? "person" : "people"} online right now`}
+              </span>
             </div>
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold">

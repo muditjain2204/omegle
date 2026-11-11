@@ -243,3 +243,14 @@ export async function grantUserVip(email: string, passType: string = "FULL_VIP",
   });
 }
 
+// Live real-time online count
+export async function getOnlineCount(): Promise<number> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/stats/online`);
+    const data = await res.json();
+    return typeof data.count === "number" ? data.count : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+

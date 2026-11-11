@@ -19,7 +19,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { getCurrentUser, UserProfile, clearToken } from "@/lib/api";
+import { getCurrentUser, UserProfile, clearToken, getOnlineCount } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 import AuthModal from "@/components/AuthModal";
 
 interface NavbarProps {
@@ -34,9 +35,26 @@ export default function Navbar({ onOpenPricing, onOpenQuickStart, hideMobileBott
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [isBottomBarHidden, setIsBottomBarHidden] = useState(false);
+  const [onlineCount, setOnlineCount] = useState<number>(0);
 
   useEffect(() => {
     getCurrentUser().then((u) => setUser(u));
+
+    getOnlineCount().then((count) => setOnlineCount(count));
+
+    const socket = getSocket();
+    const handleOnlineCount = (data: { count: number }) => {
+      if (typeof data?.count === "number") {
+        setOnlineCount(data.count);
+      }
+    };
+
+    socket.on("online-count", handleOnlineCount);
+    socket.emit("get-online-count");
+
+    return () => {
+      socket.off("online-count", handleOnlineCount);
+    };
   }, [pathname]);
 
   const navLinks = [
@@ -74,7 +92,7 @@ export default function Navbar({ onOpenPricing, onOpenQuickStart, hideMobileBott
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              14,290 Online
+              <span>{onlineCount.toLocaleString()} Online</span>
             </div>
           </div>
 

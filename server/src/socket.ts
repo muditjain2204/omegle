@@ -30,6 +30,11 @@ interface ActiveSession {
 const waitingQueues: QueueUser[] = [];
 const activeSessions: Map<string, ActiveSession> = new Map();
 const socketToSession: Map<string, string> = new Map();
+let ioInstance: SocketIOServer | null = null;
+
+export function getLiveOnlineCount(): number {
+  return ioInstance ? ioInstance.engine.clientsCount : 0;
+}
 
 export function setupSocketServer(httpServer: HTTPServer) {
   const io = new SocketIOServer(httpServer, {
@@ -38,10 +43,23 @@ export function setupSocketServer(httpServer: HTTPServer) {
       methods: ["GET", "POST"],
     },
   });
+  ioInstance = io;
+
+  const broadcastLiveCount = () => {
+    io.emit("online-count", { count: io.engine.clientsCount });
+  };
 
   // Track online users
   io.on("connection", (socket: Socket) => {
     let currentUserId: string | null = null;
+
+    // Broadcast accurate real-time online count to all clients on connection
+    broadcastLiveCount();
+
+    // Client manual request for online count
+    socket.on("get-online-count", () => {
+      socket.emit("online-count", { count: io.engine.clientsCount });
+    });
 
     socket.on("register-user", async (data: { userId: string }) => {
       currentUserId = data.userId;
@@ -207,6 +225,7 @@ export function setupSocketServer(httpServer: HTTPServer) {
           // ignore
         }
       }
+      broadcastLiveCount();
     });
   });
 }
