@@ -1,0 +1,403 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  OTHER
+  ANY
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum SessionType {
+  RANDOM
+  PREFERRED_GENDER
+}
+
+enum SessionStatus {
+  SEARCHING
+  ACTIVE
+  COMPLETED
+  DISCONNECTED
+}
+
+enum ProductType {
+  VIDEO_PACK_60M
+  TEXT_PACK_180M
+  DATING_PASS_7D
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ReportReason {
+  INAPPROPRIATE_BEHAVIOR
+  UNDERAGE
+  SPAM
+  HARASSMENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String?
+  role             Role              @default(USER)
+  isVerified       Boolean           @default(false)
+  isBanned         Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  profile          Profile?
+  preferences      UserPreference?
+  datingProfile    DatingProfile?
+  trialEntitlement TrialEntitlement?
+  usageBalance     UsageBalance?
+  adminUser        AdminUser?
+
+  sentLikes        Like[]            @relation("SentLikes")
+  receivedLikes    Like[]            @relation("ReceivedLikes")
+
+  matchesAsUser1   Match[]           @relation("User1Matches")
+  matchesAsUser2   Match[]           @relation("User2Matches")
+
+  sentRequests     MessageRequest[]  @relation("SentRequests")
+  receivedRequests MessageRequest[]  @relation("ReceivedRequests")
+
+  conversations1   Conversation[]    @relation("ConvUser1")
+  conversations2   Conversation[]    @relation("ConvUser2")
+  sentMessages     Message[]
+
+  videoSessions1   VideoSession[]    @relation("VideoUser1")
+  videoSessions2   VideoSession[]    @relation("VideoUser2")
+
+  textSessions1    TextSession[]     @relation("TextUser1")
+  textSessions2    TextSession[]     @relation("TextUser2")
+
+  purchases        Purchase[]
+  subscriptions    Subscription[]
+
+  reportsSubmitted Report[]          @relation("Reporter")
+  reportsReceived  Report[]          @relation("Reported")
+
+  blockedByMe      BlockedUser[]     @relation("Blocker")
+  blockedByOthers  BlockedUser[]     @relation("Blocked")
+
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Profile {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName      String
+  dateOfBirth      DateTime?
+  age              Int       @default(21)
+  gender           Gender    @default(OTHER)
+  avatarUrl        String?
+  bio              String?
+  interests        String[]  @default([])
+  language         String    @default("English")
+  location         String?
+  isOnline         Boolean   @default(false)
+  lastSeen         DateTime  @default(now())
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("profiles")
+}
+
+model UserPreference {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredGender      Gender   @default(ANY)
+  videoGenderFilter    Gender   @default(ANY)
+  textGenderFilter     Gender   @default(ANY)
+  allowDirectRequests  Boolean  @default(true)
+  hideOnlineStatus     Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+model DatingProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline      String?
+  bio           String?
+  photos        String[] @default([])
+  interests     String[] @default([])
+  prompts       Json?
+  isActive      Boolean  @default(true)
+  verifiedBadge Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("dating_profiles")
+}
+
+model Like {
+  id           String   @id @default(uuid())
+  senderId     String
+  receiverId   String
+  sender       User     @relation("SentLikes", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User     @relation("ReceivedLikes", fields: [receiverId], references: [id], onDelete: Cascade)
+  isSuperLike  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@unique([senderId, receiverId])
+  @@map("likes")
+}
+
+model Match {
+  id         String   @id @default(uuid())
+  user1Id    String
+  user2Id    String
+  user1      User     @relation("User1Matches", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2      User     @relation("User2Matches", fields: [user2Id], references: [id], onDelete: Cascade)
+  matchedAt  DateTime @default(now())
+  isActive   Boolean  @default(true)
+
+  @@unique([user1Id, user2Id])
+  @@map("matches")
+}
+
+model MessageRequest {
+  id          String        @id @default(uuid())
+  senderId    String
+  receiverId  String
+  sender      User          @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User          @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  messageText String
+  status      RequestStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("message_requests")
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  user1Id       String
+  user2Id       String
+  user1         User      @relation("ConvUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2         User      @relation("ConvUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  isDatingMatch Boolean   @default(false)
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  messages      Message[]
+
+  @@unique([user1Id, user2Id])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@map("messages")
+}
+
+model VideoSession {
+  id              String        @id @default(uuid())
+  sessionType     SessionType   @default(RANDOM)
+  user1Id         String
+  user2Id         String
+  user1           User          @relation("VideoUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2           User          @relation("VideoUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  durationSeconds Int           @default(0)
+  targetGender    Gender?
+  status          SessionStatus @default(ACTIVE)
+
+  @@map("video_sessions")
+}
+
+model TextSession {
+  id              String        @id @default(uuid())
+  sessionType     SessionType   @default(RANDOM)
+  user1Id         String
+  user2Id         String
+  user1           User          @relation("TextUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2           User          @relation("TextUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  durationSeconds Int           @default(0)
+  targetGender    Gender?
+  status          SessionStatus @default(ACTIVE)
+
+  @@map("text_sessions")
+}
+
+model TrialEntitlement {
+  id                     String    @id @default(uuid())
+  userId                 String    @unique
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoTrialTotalMinutes Int       @default(15)
+  videoTrialUsedSeconds  Int       @default(0)
+  textTrialTotalMinutes  Int       @default(15)
+  textTrialUsedSeconds   Int       @default(0)
+  videoTrialStartedAt    DateTime?
+  textTrialStartedAt     DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@map("trial_entitlements")
+}
+
+model UsageBalance {
+  id                       String    @id @default(uuid())
+  userId                   String    @unique
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paidVideoSecondsAvailable Int       @default(0)
+  paidTextSecondsAvailable  Int       @default(0)
+  datingPremiumExpiresAt   DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@map("usage_balances")
+}
+
+model Purchase {
+  id                String               @id @default(uuid())
+  userId            String
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productType       ProductType
+  amountPaise       Int
+  currency          String               @default("INR")
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  status            PurchaseStatus       @default(PENDING)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  transactions      PaymentTransaction[]
+
+  @@map("purchases")
+}
+
+model PaymentTransaction {
+  id                    String   @id @default(uuid())
+  purchaseId            String?
+  purchase              Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  userId                String
+  transactionLedgerType String   // CREDIT, DEBIT
+  productType           ProductType
+  unitsSeconds          Int      // Seconds added or deducted
+  balanceAfterSeconds   Int
+  remarks               String?
+  createdAt             DateTime @default(now())
+
+  @@map("payment_transactions")
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planType  String   @default("DATING_PREMIUM")
+  startDate DateTime @default(now())
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("subscriptions")
+}
+
+model Report {
+  id             String       @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser   User         @relation("Reported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reason         ReportReason @default(INAPPROPRIATE_BEHAVIOR)
+  details        String?
+  status         ReportStatus @default(PENDING)
+  actionTaken    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("reports")
+}
+
+model BlockedUser {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@map("blocked_users")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("SYSTEM") // MATCH, MESSAGE_REQUEST, TRIAL_ALERT, SYSTEM
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model AdminUser {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String   @default("SUPER_ADMIN")
+  permissions Json?
+  createdAt   DateTime @default(now())
+
+  @@map("admin_users")
+}
+
