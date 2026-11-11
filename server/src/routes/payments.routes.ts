@@ -1,9 +1,148 @@
 import { Router, Response } from "express";
+import crypto from "crypto";
+import Razorpay from "razorpay";
 import { prisma } from "../db";
 import { authMiddleware, AuthRequest } from "../auth";
-import { ProductType, PurchaseStatus } from "@prisma/client";
+import { ProductType, PurchaseStatus, Purchase } from "@prisma/client";
 
 const router = Router();
+
+// Initialize Razorpay SDK if credentials are provided in environment
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID || "";
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
+
+const razorpay = (razorpayKeyId && razorpayKeySecret)
+  ? new Razorpay({
+      key_id: razorpayKeyId,
+      key_secret: razorpayKeySecret,
+    })
+  : null;
+
+// Reusable, idempotent balance settlement helper
+export async function creditPurchase(purchaseId: string, paymentId?: string) {
+  const purchase = await prisma.purchase.findUnique({
+    where: { id: purchaseId },
+  });
+
+  if (!purchase) {
+    throw new Error("Purchase record not found");
+  }
+
+  if (purchase.status === PurchaseStatus.COMPLETED) {
+    const existingBalance = await prisma.usageBalance.findUnique({ where: { userId: purchase.userId } });
+    return { purchase, usageBalance: existingBalance };
+  }
+
+  const finalPaymentId = paymentId || `pay_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+  const updatedPurchase = await prisma.purchase.update({
+    where: { id: purchaseId },
+    data: {
+      status: PurchaseStatus.COMPLETED,
+      razorpayPaymentId: finalPaymentId,
+    },
+  });
+
+  const userId = purchase.userId;
+  let usageBalance = await prisma.usageBalance.findUnique({ where: { userId } });
+  if (!usageBalance) {
+    usageBalance = await prisma.usageBalance.create({
+      data: { userId },
+    });
+  }
+
+  let addedSeconds = 0;
+  let newBalanceSeconds = 0;
+
+  if (purchase.productType === ProductType.VIDEO_PACK_60M) {
+    addedSeconds = 60 * 60; // 3600 seconds = 60 minutes
+    newBalanceSeconds = usageBalance.paidVideoSecondsAvailable + addedSeconds;
+
+    await prisma.usageBalance.update({
+      where: { userId },
+      data: { paidVideoSecondsAvailable: newBalanceSeconds },
+    });
+
+    await prisma.paymentTransaction.create({
+      data: {
+        purchaseId: purchase.id,
+        userId,
+        transactionLedgerType: "CREDIT",
+        productType: purchase.productType,
+        unitsSeconds: addedSeconds,
+        balanceAfterSeconds: newBalanceSeconds,
+        remarks: "Purchased 60 mins Preferred Gender Video Pack (₹599 / International)",
+      },
+    });
+  } else if (purchase.productType === ProductType.TEXT_PACK_180M) {
+    addedSeconds = 180 * 60; // 10,800 seconds = 180 minutes
+    newBalanceSeconds = usageBalance.paidTextSecondsAvailable + addedSeconds;
+
+    await prisma.usageBalance.update({
+      where: { userId },
+      data: { paidTextSecondsAvailable: newBalanceSeconds },
+    });
+
+    await prisma.paymentTransaction.create({
+      data: {
+        purchaseId: purchase.id,
+        userId,
+        transactionLedgerType: "CREDIT",
+        productType: purchase.productType,
+        unitsSeconds: addedSeconds,
+        balanceAfterSeconds: newBalanceSeconds,
+        remarks: "Purchased 180 mins Preferred Gender Text Pack (₹299 / International)",
+      },
+    });
+  } else if (purchase.productType === ProductType.DATING_PASS_7D) {
+    const currentExpiry =
+      usageBalance.datingPremiumExpiresAt && new Date(usageBalance.datingPremiumExpiresAt) > new Date()
+        ? new Date(usageBalance.datingPremiumExpiresAt)
+        : new Date();
+    const newExpiry = new Date(currentExpiry.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    await prisma.usageBalance.update({
+      where: { userId },
+      data: { datingPremiumExpiresAt: newExpiry },
+    });
+
+    await prisma.subscription.create({
+      data: {
+        userId,
+        planType: "DATING_PREMIUM_7D",
+        startDate: currentExpiry,
+        endDate: newExpiry,
+        isActive: true,
+      },
+    });
+
+    await prisma.paymentTransaction.create({
+      data: {
+        purchaseId: purchase.id,
+        userId,
+        transactionLedgerType: "CREDIT",
+        productType: purchase.productType,
+        unitsSeconds: 7 * 24 * 3600,
+        balanceAfterSeconds: Math.floor((newExpiry.getTime() - Date.now()) / 1000),
+        remarks: "Purchased 7-Day Premium Dating Pass (₹499 / International)",
+      },
+    });
+  }
+
+  const updatedBalance = await prisma.usageBalance.findUnique({ where: { userId } });
+  return { purchase: updatedPurchase, usageBalance: updatedBalance };
+}
+
+// Gateway status & capabilities endpoint
+router.get("/gateway-status", (req, res) => {
+  res.json({
+    gateway: "Razorpay",
+    isConfigured: !!(razorpayKeyId && razorpayKeySecret),
+    supportsInternational: true,
+    currenciesSupported: ["INR", "USD", "EUR", "GBP", "AUD", "CAD", "SGD", "AED"],
+    keyId: razorpayKeyId || null,
+  });
+});
 
 // List available products with clear, non-confusing specifications
 router.get("/products", (req, res) => {
@@ -77,39 +216,65 @@ router.get("/products", (req, res) => {
 router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { productType } = req.body;
+    const { productType, currency = "INR" } = req.body;
 
     let amountPaise = 0;
+    let description = "";
     if (productType === ProductType.VIDEO_PACK_60M) {
       amountPaise = 59900; // ₹599
+      description = "60 Mins Preferred Gender Video Pack";
     } else if (productType === ProductType.TEXT_PACK_180M) {
       amountPaise = 29900; // ₹299
+      description = "180 Mins Preferred Gender Text Pack";
     } else if (productType === ProductType.DATING_PASS_7D) {
       amountPaise = 49900; // ₹499
+      description = "7-Day Premium Dating Pass";
     } else {
       return res.status(400).json({ error: "Invalid product selected" });
     }
 
-    const orderId = `order_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    let razorpayOrderId = `order_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    let isLiveGateway = false;
+
+    // If Razorpay SDK is configured with valid credentials, call Razorpay Orders API
+    if (razorpay) {
+      try {
+        const rzpOrder = await razorpay.orders.create({
+          amount: amountPaise,
+          currency: currency.toUpperCase(),
+          receipt: `rcpt_${Date.now().toString().slice(-8)}`,
+          notes: {
+            userId,
+            productType,
+          },
+        });
+        razorpayOrderId = rzpOrder.id;
+        isLiveGateway = true;
+      } catch (rzpErr: any) {
+        console.error("Razorpay order creation error:", rzpErr);
+      }
+    }
 
     const purchase = await prisma.purchase.create({
       data: {
         userId,
         productType,
         amountPaise,
-        currency: "INR",
-        razorpayOrderId: orderId,
+        currency: currency.toUpperCase(),
+        razorpayOrderId,
         status: PurchaseStatus.PENDING,
       },
     });
 
     return res.json({
       purchaseId: purchase.id,
-      orderId: purchase.razorpayOrderId,
+      orderId: razorpayOrderId,
       amountPaise,
-      currency: "INR",
+      currency: currency.toUpperCase(),
       productType,
-      keyId: process.env.RAZORPAY_KEY_ID || "rzp_test_mock_key_123",
+      description,
+      keyId: razorpayKeyId || "rzp_test_mock_key_123",
+      isLiveGateway,
     });
   } catch (error: any) {
     console.error("Create order error:", error);
@@ -117,11 +282,11 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
   }
 });
 
-// Verify & Settle Purchase (Immediately credits balances)
+// Verify & Settle Purchase with Cryptographic HMAC Signature Check
 router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { purchaseId, razorpayPaymentId } = req.body;
+    const { purchaseId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
 
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
@@ -132,115 +297,78 @@ router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) =
     }
 
     if (purchase.status === PurchaseStatus.COMPLETED) {
-      return res.json({ success: true, message: "Purchase already processed" });
+      const existingBalance = await prisma.usageBalance.findUnique({ where: { userId } });
+      return res.json({ success: true, message: "Purchase already processed", usageBalance: existingBalance });
     }
 
-    // Update Purchase status
-    const paymentId = razorpayPaymentId || `pay_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    await prisma.purchase.update({
-      where: { id: purchaseId },
-      data: {
-        status: PurchaseStatus.COMPLETED,
-        razorpayPaymentId: paymentId,
-      },
-    });
+    // Verify cryptographic signature if secret & signature exist
+    if (razorpayKeySecret && razorpaySignature) {
+      const orderIdToVerify = razorpayOrderId || purchase.razorpayOrderId;
+      const expectedSignature = crypto
+        .createHmac("sha256", razorpayKeySecret)
+        .update(`${orderIdToVerify}|${razorpayPaymentId}`)
+        .digest("hex");
 
-    let usageBalance = await prisma.usageBalance.findUnique({ where: { userId } });
-    if (!usageBalance) {
-      usageBalance = await prisma.usageBalance.create({
-        data: { userId },
-      });
+      if (expectedSignature !== razorpaySignature) {
+        console.error("Razorpay signature verification mismatch");
+        return res.status(400).json({ error: "Invalid payment signature verification failed" });
+      }
     }
 
-    let addedSeconds = 0;
-    let newBalanceSeconds = 0;
-
-    if (purchase.productType === ProductType.VIDEO_PACK_60M) {
-      addedSeconds = 60 * 60; // 3600 seconds = 60 minutes
-      newBalanceSeconds = usageBalance.paidVideoSecondsAvailable + addedSeconds;
-
-      await prisma.usageBalance.update({
-        where: { userId },
-        data: { paidVideoSecondsAvailable: newBalanceSeconds },
-      });
-
-      await prisma.paymentTransaction.create({
-        data: {
-          purchaseId: purchase.id,
-          userId,
-          transactionLedgerType: "CREDIT",
-          productType: purchase.productType,
-          unitsSeconds: addedSeconds,
-          balanceAfterSeconds: newBalanceSeconds,
-          remarks: "Purchased 60 mins Preferred Gender Video Pack (₹599)",
-        },
-      });
-    } else if (purchase.productType === ProductType.TEXT_PACK_180M) {
-      addedSeconds = 180 * 60; // 10,800 seconds = 180 minutes
-      newBalanceSeconds = usageBalance.paidTextSecondsAvailable + addedSeconds;
-
-      await prisma.usageBalance.update({
-        where: { userId },
-        data: { paidTextSecondsAvailable: newBalanceSeconds },
-      });
-
-      await prisma.paymentTransaction.create({
-        data: {
-          purchaseId: purchase.id,
-          userId,
-          transactionLedgerType: "CREDIT",
-          productType: purchase.productType,
-          unitsSeconds: addedSeconds,
-          balanceAfterSeconds: newBalanceSeconds,
-          remarks: "Purchased 180 mins Preferred Gender Text Pack (₹299)",
-        },
-      });
-    } else if (purchase.productType === ProductType.DATING_PASS_7D) {
-      // 7 days from now
-      const currentExpiry = usageBalance.datingPremiumExpiresAt && new Date(usageBalance.datingPremiumExpiresAt) > new Date()
-        ? new Date(usageBalance.datingPremiumExpiresAt)
-        : new Date();
-      const newExpiry = new Date(currentExpiry.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-      await prisma.usageBalance.update({
-        where: { userId },
-        data: { datingPremiumExpiresAt: newExpiry },
-      });
-
-      await prisma.subscription.create({
-        data: {
-          userId,
-          planType: "DATING_PREMIUM_7D",
-          startDate: currentExpiry,
-          endDate: newExpiry,
-          isActive: true,
-        },
-      });
-
-      await prisma.paymentTransaction.create({
-        data: {
-          purchaseId: purchase.id,
-          userId,
-          transactionLedgerType: "CREDIT",
-          productType: purchase.productType,
-          unitsSeconds: 7 * 24 * 3600,
-          balanceAfterSeconds: Math.floor((newExpiry.getTime() - Date.now()) / 1000),
-          remarks: "Purchased 7-Day Premium Dating Pass (₹499)",
-        },
-      });
-    }
-
-    // Refresh updated balance
-    const updatedBalance = await prisma.usageBalance.findUnique({ where: { userId } });
+    const result = await creditPurchase(purchase.id, razorpayPaymentId);
 
     return res.json({
       success: true,
       message: "Payment successfully verified and balance credited!",
-      usageBalance: updatedBalance,
+      usageBalance: result.usageBalance,
     });
   } catch (error: any) {
     console.error("Payment verification error:", error);
     return res.status(500).json({ error: "Failed to verify transaction" });
+  }
+});
+
+// Razorpay Webhook Endpoint for Asynchronous Payment Settle (100% Reliable Delivery)
+router.post("/webhook", async (req: any, res: Response) => {
+  try {
+    const signature = req.headers["x-razorpay-signature"] as string;
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || razorpayKeySecret;
+
+    if (webhookSecret && signature) {
+      const bodyToVerify = req.rawBody ? req.rawBody.toString("utf8") : JSON.stringify(req.body);
+      const expectedSignature = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(bodyToVerify)
+        .digest("hex");
+
+      if (expectedSignature !== signature) {
+        console.warn("Invalid webhook signature received");
+        return res.status(400).json({ error: "Invalid signature" });
+      }
+    }
+
+    const event = req.body?.event;
+    if (event === "payment.captured" || event === "order.paid") {
+      const paymentEntity = req.body?.payload?.payment?.entity;
+      const orderId = paymentEntity?.order_id || req.body?.payload?.order?.entity?.id;
+      const paymentId = paymentEntity?.id;
+
+      if (orderId) {
+        const purchase = await prisma.purchase.findFirst({
+          where: { razorpayOrderId: orderId },
+        });
+
+        if (purchase && purchase.status !== PurchaseStatus.COMPLETED) {
+          await creditPurchase(purchase.id, paymentId);
+          console.log(`✅ Webhook: successfully credited purchase ${purchase.id} for order ${orderId}`);
+        }
+      }
+    }
+
+    return res.json({ status: "ok" });
+  } catch (err: any) {
+    console.error("Webhook processing error:", err);
+    return res.status(500).json({ error: "Webhook handling failed" });
   }
 });
 

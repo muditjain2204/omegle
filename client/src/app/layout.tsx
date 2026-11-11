@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -28,6 +29,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
     >
       <body className="min-h-[100dvh] w-full flex flex-col bg-slate-50 text-slate-900">
+        <Script
+          src="https://checkout.razorpay.com/v1/checkout.js"
+          strategy="lazyOnload"
+        />
         {children}
       </body>
     </html>

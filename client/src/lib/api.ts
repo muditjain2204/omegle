@@ -181,11 +181,21 @@ export async function createPaymentOrder(productType: string) {
   });
 }
 
-export async function verifyPayment(purchaseId: string, razorpayPaymentId?: string) {
+export async function verifyPayment(
+  purchaseId: string,
+  razorpayPaymentId?: string,
+  razorpayOrderId?: string,
+  razorpaySignature?: string
+) {
   return fetchWithAuth("/api/payments/verify", {
     method: "POST",
-    body: JSON.stringify({ purchaseId, razorpayPaymentId }),
+    body: JSON.stringify({ purchaseId, razorpayPaymentId, razorpayOrderId, razorpaySignature }),
   });
+}
+
+export async function getPaymentGatewayStatus() {
+  const res = await fetch(`${API_BASE_URL}/api/payments/gateway-status`);
+  return res.json();
 }
 
 export async function getPaymentHistory() {

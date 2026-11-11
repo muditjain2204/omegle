@@ -19,6 +19,7 @@ import {
   getCurrentUser,
   UserProfile,
 } from "@/lib/api";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 export default function PricingPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -48,13 +49,25 @@ export default function PricingPage() {
 
     try {
       const order = await createPaymentOrder(productType);
-      const verifyRes = await verifyPayment(order.purchaseId);
-      setSuccessMessage(verifyRes.message || "Purchase completed! Your balance is updated.");
-      loadData();
-      setTimeout(() => setSuccessMessage(null), 3000);
+
+      await openRazorpayCheckout({
+        orderData: order,
+        user,
+        onSuccess: (verifyRes) => {
+          setSuccessMessage(verifyRes.message || "Purchase completed! Your balance has been updated.");
+          loadData();
+          setTimeout(() => setSuccessMessage(null), 4000);
+        },
+        onError: (err: any) => {
+          setErrorMessage(err.message || "Payment was cancelled or failed. Please try again.");
+          setProcessingId(null);
+        },
+        onDismiss: () => {
+          setProcessingId(null);
+        },
+      });
     } catch (err: any) {
-      setErrorMessage(err.message || "Payment failed. Please try again.");
-    } finally {
+      setErrorMessage(err.message || "Failed to initialize payment gateway. Please try again.");
       setProcessingId(null);
     }
   };
@@ -170,6 +183,18 @@ export default function PricingPage() {
             {errorMessage}
           </div>
         )}
+
+        {/* Razorpay International & Domestic Banner */}
+        <div className="max-w-4xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-wrap items-center justify-between gap-3 text-xs text-blue-900 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-bold text-slate-900">Razorpay Payment Gateway:</span>
+            <span className="text-slate-600">UPI, Cards, NetBanking + 100+ International Currencies (USD, EUR, GBP, AUD, etc.)</span>
+          </div>
+          <span className="text-[11px] font-bold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs">
+            🌍 Worldwide Overseas Payments Supported
+          </span>
+        </div>
 
         {/* 4 Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

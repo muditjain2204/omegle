@@ -19,7 +19,13 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(cors({ origin: "*" }));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Health check
 app.get("/api/health", (req, res) => {

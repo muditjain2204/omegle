@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Crown, Video, MessageSquare, Heart, Shield, Sparkles, Gift, Tag } from "lucide-react";
+import { X, Check, Crown, Video, MessageSquare, Heart, Shield, Sparkles, Gift, Tag, Globe, CreditCard } from "lucide-react";
 import confetti from "canvas-confetti";
-import { createPaymentOrder, verifyPayment, redeemPromoCode } from "@/lib/api";
+import { createPaymentOrder, verifyPayment, redeemPromoCode, getCurrentUser, UserProfile } from "@/lib/api";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -30,8 +31,11 @@ export default function PricingModal({
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
 
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
   useEffect(() => {
     setMounted(true);
+    getCurrentUser().then((u) => setCurrentUser(u)).catch(() => {});
   }, []);
 
   // Lock background scrolling when modal is open
@@ -64,22 +68,39 @@ export default function PricingModal({
     setProcessingId(productType);
 
     try {
-      // 1. Create order
+      // 1. Create order on backend (creates DB purchase + Razorpay order)
       const order = await createPaymentOrder(productType);
 
-      // 2. Simulated instant test settlement (in test mode, or Razorpay standard checkout)
-      const verifyRes = await verifyPayment(order.purchaseId);
+      // 2. Launch Razorpay Checkout Modal
+      await openRazorpayCheckout({
+        orderData: order,
+        user: currentUser,
+        onSuccess: (verifyRes) => {
+          setSuccessMessage(verifyRes.message || "Payment successful! Your balance has been credited.");
+          try {
+            confetti({
+              particleCount: 110,
+              spread: 75,
+              origin: { y: 0.6 },
+            });
+          } catch (e) {}
+          if (onSuccess) onSuccess();
 
-      setSuccessMessage(verifyRes.message || "Purchase completed! Your balance is updated.");
-      if (onSuccess) onSuccess();
-
-      setTimeout(() => {
-        setSuccessMessage(null);
-        onClose();
-      }, 1600);
+          setTimeout(() => {
+            setSuccessMessage(null);
+            onClose();
+          }, 2000);
+        },
+        onError: (err: any) => {
+          setErrorMessage(err.message || "Payment was cancelled or failed. Please try again.");
+          setProcessingId(null);
+        },
+        onDismiss: () => {
+          setProcessingId(null);
+        },
+      });
     } catch (err: any) {
-      setErrorMessage(err.message || "Payment failed. Please try again.");
-    } finally {
+      setErrorMessage(err.message || "Failed to initialize payment gateway. Please try again.");
       setProcessingId(null);
     }
   };
@@ -376,6 +397,19 @@ export default function PricingModal({
             {promoError}
           </div>
         )}
+
+        {/* Razorpay Gateway & International Support Badge */}
+        <div className="mx-6 sm:mx-8 mb-4 px-4 py-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900">
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-blue-600 shrink-0" />
+            <span className="font-semibold">Razorpay Secure Checkout:</span>
+            <span className="text-slate-600">Supports UPI, NetBanking, and International Cards (USD, EUR, GBP, AUD & 100+ Currencies)</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200">
+            <CreditCard className="h-3 w-3" />
+            <span>Overseas Payments Accepted</span>
+          </div>
+        </div>
 
         {/* Footer Guarantee */}
         <div className="bg-slate-50 border-t border-slate-200 px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
