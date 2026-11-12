@@ -75,7 +75,6 @@ export default function TextChatPage() {
   }, []);
 
   useEffect(() => {
-    if (authChecking || !user) return;
     const socket = getSocket();
 
     socket.on("match-found", (data) => {
@@ -91,6 +90,12 @@ export default function TextChatPage() {
           isMe: false,
         },
       ]);
+    });
+
+    socket.on("queue-status", (data: { status: string; message?: string }) => {
+      if (data.status === "SEARCHING") {
+        setMatchStatus("SEARCHING");
+      }
     });
 
     socket.on("session-tick", (data) => {
@@ -198,9 +203,10 @@ export default function TextChatPage() {
 
   const handleStartMatch = (mode: "random" | "preferred_gender") => {
     const socket = getSocket();
+    const currentUser = userRef.current || user;
 
     if (mode === "preferred_gender") {
-      const available = user?.usageBalance?.paidTextSecondsAvailable || 0;
+      const available = currentUser?.usageBalance?.paidTextSecondsAvailable || 0;
       if (available <= 0) {
         setIsPricingOpen(true);
         return;
@@ -212,10 +218,10 @@ export default function TextChatPage() {
     setPeerInfo(null);
 
     socket.emit("join-queue", {
-      userId: user?.id || `guest_${Date.now()}`,
-      displayName: user?.profile?.displayName || "Guest User",
-      avatarUrl: user?.profile?.avatarUrl,
-      gender: user?.profile?.gender || "OTHER",
+      userId: currentUser?.id || `guest_${Date.now()}`,
+      displayName: currentUser?.profile?.displayName || "Guest User",
+      avatarUrl: currentUser?.profile?.avatarUrl,
+      gender: currentUser?.profile?.gender || "OTHER",
       targetGender: mode === "preferred_gender" ? targetGender : "ANY",
       type: "text",
       mode,

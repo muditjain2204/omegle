@@ -112,8 +112,24 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 }
 
 // Dating API
-export async function getDatingProfiles() {
-  return fetchWithAuth("/api/dating/discover");
+export async function getDatingProfiles(filters?: {
+  gender?: string;
+  minAge?: number;
+  maxAge?: number;
+  city?: string;
+  intention?: string;
+  interest?: string;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.gender && filters.gender !== "ALL") query.append("gender", filters.gender);
+  if (filters?.minAge) query.append("minAge", filters.minAge.toString());
+  if (filters?.maxAge) query.append("maxAge", filters.maxAge.toString());
+  if (filters?.city) query.append("city", filters.city);
+  if (filters?.intention && filters.intention !== "ANY") query.append("intention", filters.intention);
+  if (filters?.interest) query.append("interest", filters.interest);
+
+  const qs = query.toString();
+  return fetchWithAuth(`/api/dating/discover${qs ? `?${qs}` : ""}`);
 }
 
 export async function likeProfile(targetUserId: string, isSuperLike = false) {
@@ -130,8 +146,51 @@ export async function passProfile(targetUserId: string) {
   });
 }
 
+export async function getLikesYou() {
+  return fetchWithAuth("/api/dating/likes-you");
+}
+
 export async function getMatches() {
   return fetchWithAuth("/api/dating/matches");
+}
+
+export async function unmatchUser(targetUserId: string) {
+  return fetchWithAuth("/api/dating/unmatch", {
+    method: "POST",
+    body: JSON.stringify({ targetUserId }),
+  });
+}
+
+export async function getDatingProfile() {
+  return fetchWithAuth("/api/dating/profile");
+}
+
+export async function updateDatingProfile(data: {
+  displayName?: string;
+  age?: number;
+  gender?: string;
+  location?: string;
+  headline?: string;
+  bio?: string;
+  photos?: string[];
+  interests?: string[];
+  relationshipIntention?: string;
+  interestedIn?: string;
+}) {
+  return fetchWithAuth("/api/dating/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getDatingNotifications() {
+  return fetchWithAuth("/api/dating/notifications");
+}
+
+export async function markNotificationsRead() {
+  return fetchWithAuth("/api/dating/notifications/read", {
+    method: "POST",
+  });
 }
 
 // Messages API

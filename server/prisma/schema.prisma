@@ -156,19 +156,22 @@ model UserPreference {
 }
 
 model DatingProfile {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  headline      String?
-  bio           String?
-  photos        String[] @default([])
-  interests     String[] @default([])
-  prompts       Json?
-  isActive      Boolean  @default(true)
-  verifiedBadge Boolean  @default(false)
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline              String?
+  bio                   String?
+  photos                String[] @default([])
+  interests             String[] @default([])
+  prompts               Json?
+  relationshipIntention String?  @default("Casual Dating")
+  city                  String?
+  interestedIn          String?  @default("Everyone")
+  isActive              Boolean  @default(true)
+  verifiedBadge         Boolean  @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@map("dating_profiles")
 }
@@ -377,14 +380,25 @@ model BlockedUser {
   @@map("blocked_users")
 }
 
+model DatingPass {
+  id        String   @id @default(uuid())
+  userId    String
+  targetId  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, targetId])
+  @@map("dating_passes")
+}
+
 model Notification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
-  type      String   @default("SYSTEM") // MATCH, MESSAGE_REQUEST, TRIAL_ALERT, SYSTEM
+  type      String   @default("SYSTEM") // LIKE, SUPER_LIKE, MATCH, MESSAGE, SYSTEM
   isRead    Boolean  @default(false)
+  metadata  Json?
   createdAt DateTime @default(now())
 
   @@map("notifications")
