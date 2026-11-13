@@ -239,9 +239,9 @@ export default function VideoChatPage() {
     });
   }, []);
 
-  // Initialize Camera once when authenticated (with multi-tab virtual fallback support)
+  // Initialize Camera immediately on mount in parallel with auth check to eliminate opening lag
   useEffect(() => {
-    if (authChecking || cameraStartedRef.current) return;
+    if (cameraStartedRef.current) return;
     cameraStartedRef.current = true;
 
     async function startCamera() {
