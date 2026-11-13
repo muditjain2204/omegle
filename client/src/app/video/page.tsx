@@ -70,41 +70,53 @@ function createSilentAudioTrack(): MediaStreamTrack | null {
  * Allows seamless WebRTC video calls in multiple tabs simultaneously on the same machine
  * without failing due to hardware camera lock (e.g. Linux /dev/video0 or Windows DirectShow exclusive access).
  */
-function createVirtualMediaStream(displayName: string, subtitle: string): MediaStream {
+function createVirtualMediaStream(displayNameOrGetter: string | (() => string), subtitle: string): MediaStream {
   let canvas = (typeof document !== "undefined" ? document.getElementById("virtual-webrtc-canvas") : null) as HTMLCanvasElement;
   if (!canvas && typeof document !== "undefined") {
     canvas = document.createElement("canvas");
     canvas.id = "virtual-webrtc-canvas";
     canvas.width = 640;
     canvas.height = 480;
+    // CRITICAL: Full 640x480 off-screen dimensions without opacity: 0 so Chrome compositor paints every frame
     canvas.style.position = "fixed";
     canvas.style.left = "-9999px";
-    canvas.style.top = "-9999px";
-    canvas.style.width = "1px";
-    canvas.style.height = "1px";
-    canvas.style.opacity = "0";
+    canvas.style.top = "0px";
+    canvas.style.width = "640px";
+    canvas.style.height = "480px";
+    canvas.style.zIndex = "-9999";
     canvas.style.pointerEvents = "none";
     document.body.appendChild(canvas);
   }
 
   const ctx = canvas?.getContext("2d");
   let frame = 0;
-  const initial = displayName?.charAt(0)?.toUpperCase() || "U";
+
+  function getName(): string {
+    if (typeof displayNameOrGetter === "function") {
+      return displayNameOrGetter() || "You";
+    }
+    return displayNameOrGetter || "You";
+  }
+
+  let canvasStream: MediaStream | null = null;
 
   function draw() {
     if (!ctx) return;
     frame++;
 
-    // Gradient background that shifts subtly
-    const hue = (frame * 0.3) % 360;
+    const currentName = getName();
+    const initial = currentName.charAt(0)?.toUpperCase() || "U";
+
+    // Gradient background that shifts smoothly
+    const hue = (frame * 0.4) % 360;
     const grad = ctx.createLinearGradient(0, 0, 640, 480);
-    grad.addColorStop(0, `hsl(${hue}, 40%, 14%)`);
-    grad.addColorStop(1, `hsl(${(hue + 60) % 360}, 50%, 8%)`);
+    grad.addColorStop(0, `hsl(${hue}, 45%, 15%)`);
+    grad.addColorStop(1, `hsl(${(hue + 60) % 360}, 55%, 8%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 640, 480);
 
     // Subtle animated grid
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 1;
     for (let x = 0; x < 640; x += 40) {
       ctx.beginPath();
@@ -119,46 +131,83 @@ function createVirtualMediaStream(displayName: string, subtitle: string): MediaS
       ctx.stroke();
     }
 
-    // Outer pulsing ring
-    const pulseRadius = 70 + Math.sin(frame * 0.05) * 8;
+    // Outer pulsing neon ring
+    const pulseRadius = 70 + Math.sin(frame * 0.06) * 10;
     ctx.beginPath();
-    ctx.arc(320, 200, pulseRadius + 15, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.35)";
+    ctx.arc(320, 190, pulseRadius + 15, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(59, 130, 246, 0.45)";
     ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Secondary pulse ring
+    ctx.beginPath();
+    ctx.arc(320, 190, pulseRadius + 28, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(147, 51, 234, 0.25)";
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Avatar Circle
     ctx.beginPath();
-    ctx.arc(320, 200, 70, 0, Math.PI * 2);
+    ctx.arc(320, 190, 70, 0, Math.PI * 2);
     ctx.fillStyle = "#2563eb";
     ctx.fill();
+
+    // Avatar border
+    ctx.beginPath();
+    ctx.arc(320, 190, 70, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3;
+    ctx.stroke();
 
     // Initial
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 64px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(initial, 320, 200);
+    ctx.fillText(initial, 320, 190);
 
     // Display Name
-    ctx.font = "bold 22px sans-serif";
+    ctx.font = "bold 24px sans-serif";
     ctx.fillStyle = "#f8fafc";
-    ctx.fillText(displayName, 320, 310);
+    ctx.fillText(currentName, 320, 295);
 
     // Subtitle badge
-    ctx.font = "14px sans-serif";
+    ctx.font = "bold 13px sans-serif";
     ctx.fillStyle = "#38bdf8";
-    ctx.fillText(subtitle, 320, 340);
+    ctx.fillText(subtitle, 320, 325);
 
     // Animated simulated audio wave bars
     ctx.fillStyle = "#60a5fa";
-    const bars = 7;
+    const bars = 9;
     const barWidth = 6;
-    const spacing = 10;
+    const spacing = 8;
     const startX = 320 - ((bars * (barWidth + spacing)) / 2);
     for (let i = 0; i < bars; i++) {
-      const h = 8 + Math.sin(frame * 0.1 + i * 0.8) * 8;
-      ctx.fillRect(startX + i * (barWidth + spacing), 375 - h / 2, barWidth, h);
+      const h = 8 + Math.sin(frame * 0.12 + i * 0.7) * 12;
+      ctx.fillRect(startX + i * (barWidth + spacing), 365 - h / 2, barWidth, h);
+    }
+
+    // Live Digital Timestamp ticker (guarantees every single frame is uniquely dynamic)
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString()} · Live 30fps`;
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+    ctx.fillText(timeStr, 320, 420);
+
+    // Live green dot
+    ctx.beginPath();
+    ctx.arc(225, 416, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#22c55e";
+    ctx.fill();
+
+    // Request frame on track if browser supports it
+    if (canvasStream) {
+      const vt = canvasStream.getVideoTracks()[0];
+      if (vt && (vt as any).requestFrame) {
+        try {
+          (vt as any).requestFrame();
+        } catch (e) {}
+      }
     }
   }
 
@@ -171,7 +220,7 @@ function createVirtualMediaStream(displayName: string, subtitle: string): MediaS
   const intervalId = setInterval(draw, 1000 / 30);
   draw();
 
-  const canvasStream = canvas ? canvas.captureStream(30) : new MediaStream();
+  canvasStream = canvas ? canvas.captureStream(30) : new MediaStream();
   const audioTrack = createSilentAudioTrack();
   if (audioTrack) {
     canvasStream.addTrack(audioTrack);
@@ -240,6 +289,8 @@ export default function VideoChatPage() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
   const cameraStartedRef = useRef(false);
+  const isInitiatorRef = useRef(false);
+  const peerSocketIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -248,20 +299,31 @@ export default function VideoChatPage() {
     localStreamRef.current = stream;
     setHasCameraStream(true);
     if (localVideoRef.current) {
-      localVideoRef.current.muted = true;
-      localVideoRef.current.defaultMuted = true;
-      try {
-        // Strip audio track from local preview: local camera only needs video
-        const videoTracks = stream.getVideoTracks();
-        if (videoTracks.length > 0) {
-          localVideoRef.current.srcObject = new MediaStream(videoTracks);
-        } else {
-          localVideoRef.current.srcObject = stream;
+      const el = localVideoRef.current;
+      el.muted = true;
+      el.defaultMuted = true;
+      el.setAttribute("muted", "");
+      el.volume = 0;
+      el.setAttribute("playsinline", "");
+      el.setAttribute("autoplay", "");
+
+      const currentTrack = (el.srcObject as MediaStream)?.getVideoTracks?.()[0];
+      const newTrack = stream.getVideoTracks()[0];
+      if (!currentTrack || currentTrack.id !== newTrack?.id) {
+        try {
+          if (newTrack) {
+            el.srcObject = new MediaStream([newTrack]);
+          } else {
+            el.srcObject = stream;
+          }
+        } catch (e) {
+          el.srcObject = stream;
         }
-      } catch (e) {
-        localVideoRef.current.srcObject = stream;
       }
-      localVideoRef.current.play().catch(() => {});
+
+      el.play().catch(() => {
+        setTimeout(() => { el.play().catch(() => {}); }, 150);
+      });
     }
   };
 
@@ -270,20 +332,32 @@ export default function VideoChatPage() {
     remoteStreamRef.current = stream;
     setHasRemoteStream(true);
     if (remoteVideoRef.current) {
-      if (remoteVideoRef.current.srcObject !== stream) {
-        remoteVideoRef.current.srcObject = stream;
+      const el = remoteVideoRef.current;
+      el.setAttribute("playsinline", "");
+      el.setAttribute("autoplay", "");
+
+      const currentTrack = (el.srcObject as MediaStream)?.getVideoTracks?.()[0];
+      const newTrack = stream.getVideoTracks()[0];
+      if (!currentTrack || currentTrack.id !== newTrack?.id || el.srcObject !== stream) {
+        el.srcObject = stream;
       }
-      const playPromise = remoteVideoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn("Remote autoplay blocked by audio policy, falling back to muted play:", err);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.muted = true;
-            setIsRemoteAutoplayMuted(true);
-            remoteVideoRef.current.play().catch(() => {});
-          }
-        });
-      }
+
+      const tryPlay = () => {
+        const playPromise = el.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn("Remote autoplay blocked, falling back to muted play:", err);
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.muted = true;
+              setIsRemoteAutoplayMuted(true);
+              remoteVideoRef.current.play().catch(() => {
+                setTimeout(() => { remoteVideoRef.current?.play().catch(() => {}); }, 300);
+              });
+            }
+          });
+        }
+      };
+      tryPlay();
     }
   };
 
@@ -308,6 +382,35 @@ export default function VideoChatPage() {
     });
   }, []);
 
+  // Helper to inject/replace camera tracks into an active peer connection
+  const syncTracksToPC = (stream: MediaStream) => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+    const senders = pc.getSenders();
+    stream.getTracks().forEach((track) => {
+      const existingSender = senders.find(
+        (s) => s.track?.kind === track.kind || (!s.track && (s as any)._kindHint === track.kind)
+      );
+      if (existingSender) {
+        existingSender.replaceTrack(track).catch(() => {});
+      } else {
+        // Check if there's a sender with null track of same kind (from addTransceiver)
+        const nullSender = senders.find(
+          (s) => !s.track && pc.getTransceivers().some(
+            (t) => t.sender === s && t.mid !== null && t.receiver.track?.kind === track.kind
+          )
+        );
+        if (nullSender) {
+          nullSender.replaceTrack(track).catch(() => {});
+        } else {
+          try {
+            pc.addTrack(track, stream);
+          } catch (e) {}
+        }
+      }
+    });
+  };
+
   // Initialize Camera immediately on mount in parallel with auth check to eliminate opening lag
   useEffect(() => {
     if (cameraStartedRef.current) return;
@@ -322,19 +425,7 @@ export default function VideoChatPage() {
         });
         setIsVirtualCam(false);
         attachLocalStream(stream);
-
-        // Update active WebRTC connection if already open
-        if (peerConnectionRef.current) {
-          const senders = peerConnectionRef.current.getSenders();
-          stream.getTracks().forEach((track) => {
-            const sender = senders.find((s) => s.track && s.track.kind === track.kind);
-            if (sender) {
-              sender.replaceTrack(track).catch(() => {});
-            } else {
-              peerConnectionRef.current?.addTrack(track, stream);
-            }
-          });
-        }
+        syncTracksToPC(stream);
         return;
       } catch (err: any) {
         console.warn("Full camera+mic access failed, checking fallback:", err?.name || err);
@@ -351,18 +442,7 @@ export default function VideoChatPage() {
 
         setIsVirtualCam(false);
         attachLocalStream(stream);
-
-        if (peerConnectionRef.current) {
-          const senders = peerConnectionRef.current.getSenders();
-          stream.getTracks().forEach((track) => {
-            const sender = senders.find((s) => s.track && s.track.kind === track.kind);
-            if (sender) {
-              sender.replaceTrack(track).catch(() => {});
-            } else {
-              peerConnectionRef.current?.addTrack(track, stream);
-            }
-          });
-        }
+        syncTracksToPC(stream);
         return;
       } catch (err: any) {
         console.warn("Camera video-only failed (hardware locked in another tab):", err?.name || err);
@@ -370,23 +450,14 @@ export default function VideoChatPage() {
 
       // 3. Fallback: Virtual Animated Camera Stream for multi-tab simultaneous testing
       console.info("Starting virtual camera stream for multi-tab support...");
-      const displayName = userRef.current?.profile?.displayName || "You";
-      const virtualStream = createVirtualMediaStream(displayName, "Camera in Tab 1 • Virtual Feed");
+      const virtualStream = createVirtualMediaStream(
+        () => userRef.current?.profile?.displayName || "You",
+        "Camera in Tab 1 • Virtual Feed"
+      );
       virtualCanvasStreamRef.current = virtualStream;
       setIsVirtualCam(true);
       attachLocalStream(virtualStream);
-
-      if (peerConnectionRef.current) {
-        const senders = peerConnectionRef.current.getSenders();
-        virtualStream.getTracks().forEach((track) => {
-          const sender = senders.find((s) => s.track && s.track.kind === track.kind);
-          if (sender) {
-            sender.replaceTrack(track).catch(() => {});
-          } else {
-            peerConnectionRef.current?.addTrack(track, virtualStream);
-          }
-        });
-      }
+      syncTracksToPC(virtualStream);
     }
     startCamera();
 
@@ -405,16 +476,30 @@ export default function VideoChatPage() {
 
   // Ensure remote and local videos stay playing continuously
   useEffect(() => {
-    if (hasRemoteStream && remoteStreamRef.current) {
+    if (!authChecking && hasRemoteStream && remoteStreamRef.current) {
       attachRemoteStream(remoteStreamRef.current);
     }
-  }, [hasRemoteStream, matchStatus]);
+  }, [authChecking, hasRemoteStream, matchStatus]);
 
   useEffect(() => {
-    if (hasCameraStream && localStreamRef.current) {
+    if (!authChecking && hasCameraStream && localStreamRef.current) {
       attachLocalStream(localStreamRef.current);
     }
-  }, [hasCameraStream, isVideoDisabled]);
+  }, [authChecking, hasCameraStream, isVideoDisabled]);
+
+  // Periodic keepalive: re-kick video elements that browsers silently pause
+  useEffect(() => {
+    if (matchStatus !== "CONNECTED") return;
+    const interval = setInterval(() => {
+      if (remoteVideoRef.current && remoteVideoRef.current.paused && remoteVideoRef.current.srcObject) {
+        remoteVideoRef.current.play().catch(() => {});
+      }
+      if (localVideoRef.current && localVideoRef.current.paused && localVideoRef.current.srcObject && !isVideoDisabled) {
+        localVideoRef.current.play().catch(() => {});
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [matchStatus, isVideoDisabled]);
 
   // WebRTC Peer Connection Helper
   const createPeerConnection = (targetSocketId?: string) => {
@@ -438,14 +523,16 @@ export default function VideoChatPage() {
     peerConnectionRef.current = pc;
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!);
+      const stream = localStreamRef.current;
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
       });
     } else {
-      // Fallback transceivers to ensure SDP media sections exist
+      // No camera yet — add sendrecv transceivers so SDP has media lines
+      // and tracks can be replaced later when camera initializes
       try {
-        pc.addTransceiver("video", { direction: "recvonly" });
-        pc.addTransceiver("audio", { direction: "recvonly" });
+        pc.addTransceiver("video", { direction: "sendrecv" });
+        pc.addTransceiver("audio", { direction: "sendrecv" });
       } catch (e) {}
     }
 
@@ -465,6 +552,13 @@ export default function VideoChatPage() {
         stream = remoteStreamRef.current;
       }
       attachRemoteStream(stream);
+
+      // Listen for when track un-mutes to re-attach if browser paused
+      event.track.onunmute = () => {
+        if (remoteStreamRef.current) {
+          attachRemoteStream(remoteStreamRef.current);
+        }
+      };
     };
 
     pc.onconnectionstatechange = () => {
@@ -472,6 +566,20 @@ export default function VideoChatPage() {
         setHasRemoteStream(true);
       } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         setHasRemoteStream(false);
+      }
+    };
+
+    // Handle negotiation needed (fired when tracks are added/replaced after connection is open)
+    pc.onnegotiationneeded = async () => {
+      try {
+        // Only the initiator should send renegotiation offers to avoid glare
+        if (!isInitiatorRef.current) return;
+        if (pc.signalingState !== "stable") return;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        getSocket().emit("signal-offer", { targetSocketId: peerSocketIdRef.current, offer });
+      } catch (err) {
+        console.warn("Renegotiation error:", err);
       }
     };
 
@@ -487,6 +595,10 @@ export default function VideoChatPage() {
       setPeerInfo(data.peer);
       setCallDuration(0);
       setLiveCaption(`Connected with ${data.peer.displayName}. Video and audio are encrypted.`);
+
+      // Store role & peer socket for renegotiation
+      isInitiatorRef.current = !!data.isInitiator;
+      peerSocketIdRef.current = data.peer.socketId;
 
       // If connected to another tab of oneself, mute remote audio by default to avoid howling audio feedback
       if (data.peer?.isSelfTab) {
@@ -522,7 +634,12 @@ export default function VideoChatPage() {
 
     socket.on("signal-offer", async (data: { offer: RTCSessionDescriptionInit; senderSocketId: string }) => {
       try {
-        const pc = createPeerConnection(data.senderSocketId);
+        let pc = peerConnectionRef.current;
+        // If no peer connection exists, create one (first offer)
+        if (!pc || pc.connectionState === "closed") {
+          pc = createPeerConnection(data.senderSocketId);
+          peerSocketIdRef.current = data.senderSocketId;
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         // Flush any candidates that arrived before remoteDescription was set
         const queued = [...iceCandidatesQueue.current];
@@ -790,20 +907,7 @@ export default function VideoChatPage() {
 
       setIsVirtualCam(false);
       attachLocalStream(stream);
-
-      // If active WebRTC peer connection exists, replace sender tracks
-      if (peerConnectionRef.current) {
-        const senders = peerConnectionRef.current.getSenders();
-        const videoTrack = stream.getVideoTracks()[0];
-        const audioTrack = stream.getAudioTracks()[0];
-        for (const sender of senders) {
-          if (sender.track?.kind === "video" && videoTrack) {
-            sender.replaceTrack(videoTrack).catch(() => {});
-          } else if (sender.track?.kind === "audio" && audioTrack) {
-            sender.replaceTrack(audioTrack).catch(() => {});
-          }
-        }
-      }
+      syncTracksToPC(stream);
     } catch (err: any) {
       alert("Hardware camera is still busy in another tab. Once that tab is closed, click this again to switch to real camera.");
     }
@@ -1009,7 +1113,12 @@ export default function VideoChatPage() {
               <div className="w-full h-full relative">
                 {/* Real Remote WebRTC Video */}
                 <video
-                  ref={remoteVideoRef}
+                  ref={(el) => {
+                    remoteVideoRef.current = el;
+                    if (el && remoteStreamRef.current) {
+                      attachRemoteStream(remoteStreamRef.current);
+                    }
+                  }}
                   autoPlay
                   playsInline
                   onLoadedMetadata={(e) => {
@@ -1200,7 +1309,12 @@ export default function VideoChatPage() {
             {/* Picture-in-Picture Local Camera (Top Right) */}
             <div className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 z-20 w-24 sm:w-36 md:w-40 aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden border-2 border-white/60 shadow-xl bg-slate-900 group">
               <video
-                ref={localVideoRef}
+                ref={(el) => {
+                  localVideoRef.current = el;
+                  if (el && localStreamRef.current) {
+                    attachLocalStream(localStreamRef.current);
+                  }
+                }}
                 autoPlay
                 playsInline
                 muted

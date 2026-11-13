@@ -120,6 +120,13 @@ export function setupSocketServer(httpServer: HTTPServer) {
         joinedAt: Date.now(),
       };
 
+      // Clean up disconnected sockets from the queue
+      for (let i = waitingQueues.length - 1; i >= 0; i--) {
+        if (!io.sockets.sockets.has(waitingQueues[i].socketId)) {
+          waitingQueues.splice(i, 1);
+        }
+      }
+
       // Try finding an existing human match in queue
       const matchIndex = waitingQueues.findIndex((candidate) => {
         // Cannot match with oneself on the exact same socket connection
