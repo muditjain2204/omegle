@@ -27,8 +27,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
+      suppressHydrationWarning
     >
-      <body className="min-h-[100dvh] w-full flex flex-col bg-slate-50 text-slate-900">
+      <body
+        className="min-h-[100dvh] w-full flex flex-col bg-slate-50 text-slate-900"
+        suppressHydrationWarning
+      >
         <Script
           src="https://checkout.razorpay.com/v1/checkout.js"
           strategy="lazyOnload"
