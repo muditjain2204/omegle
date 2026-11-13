@@ -22,6 +22,7 @@ import {
   Activity,
   UserCheck,
   MessageSquare,
+  FlipHorizontal,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import PricingModal from "@/components/PricingModal";
@@ -261,6 +262,7 @@ export default function VideoChatPage() {
   const [volume, setVolume] = useState(80);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMirrored, setIsMirrored] = useState(true);
 
   // Live status & caption
   const [liveCaption, setLiveCaption] = useState("Ready to chat. Click 'Start Video Matching' to meet someone!");
@@ -1327,6 +1329,8 @@ export default function VideoChatPage() {
                   }
                 }}
                 className={`w-full h-full object-cover transition-opacity duration-200 ${
+                  isMirrored && !isVirtualCam ? "-scale-x-1" : ""
+                } ${
                   isVideoDisabled || !hasCameraStream ? "opacity-0 absolute inset-0 pointer-events-none" : "opacity-100"
                 }`}
               />
@@ -1344,18 +1348,29 @@ export default function VideoChatPage() {
                   <span className="text-[9px] font-semibold">Camera Off</span>
                 </div>
               )}
-              {/* Local Tag */}
-              <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
-                <span className="px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[10px] font-semibold text-white">
-                  {user?.profile?.displayName || "You"}
-                </span>
-                {isVirtualCam && (
+              {/* Local Tag & Mirror toggle */}
+              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
+                <div className="flex items-center gap-1 pointer-events-auto">
+                  <span className="px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[10px] font-semibold text-white">
+                    {user?.profile?.displayName || "You"}
+                  </span>
+                  {isVirtualCam && (
+                    <button
+                      onClick={handleRetryCamera}
+                      className="px-1.5 py-0.5 rounded bg-amber-500/80 hover:bg-amber-500 backdrop-blur-md text-[9px] font-semibold text-white cursor-pointer transition-colors"
+                      title="Camera locked in another tab. Click to retry hardware camera."
+                    >
+                      Virtual Cam
+                    </button>
+                  )}
+                </div>
+                {!isVirtualCam && hasCameraStream && !isVideoDisabled && (
                   <button
-                    onClick={handleRetryCamera}
-                    className="px-1.5 py-0.5 rounded bg-amber-500/80 hover:bg-amber-500 backdrop-blur-md text-[9px] font-semibold text-white cursor-pointer transition-colors"
-                    title="Camera locked in another tab. Click to retry hardware camera."
+                    onClick={() => setIsMirrored(!isMirrored)}
+                    className="p-1 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-md text-white/80 hover:text-white transition-all cursor-pointer pointer-events-auto"
+                    title={isMirrored ? "Mirror mode ON (click for normal view)" : "Mirror mode OFF (click for mirror view)"}
                   >
-                    Virtual Cam
+                    <FlipHorizontal className={`h-3 w-3 ${isMirrored ? "text-blue-400" : "text-slate-400"}`} />
                   </button>
                 )}
               </div>
