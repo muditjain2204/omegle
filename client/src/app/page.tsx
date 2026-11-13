@@ -58,6 +58,20 @@ export default function LandingPage() {
     };
   }, []);
 
+  // Explicitly ensure video plays and stays muted for browser autoplay compliance
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Autoplay notice:", err);
+        });
+      }
+    }
+  }, []);
+
   const openQuick = (mode: "video" | "text") => {
     setQuickStartMode(mode);
     setIsQuickStartOpen(true);
@@ -77,9 +91,9 @@ export default function LandingPage() {
       />
 
       {/* Hero Section with Full-Bleed Video Background Canvas */}
-      <section className="relative overflow-hidden pt-8 pb-16 sm:pt-12 sm:pb-20 border-b border-slate-200 min-h-[640px] flex items-center justify-center">
+      <section className="relative isolate overflow-hidden pt-8 pb-16 sm:pt-12 sm:pb-20 border-b border-slate-800 bg-slate-950 min-h-[640px] flex items-center justify-center">
         {/* Full Canvas Background Video covering the entire window */}
-        <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none select-none -z-10">
+        <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none select-none z-0">
           <video
             ref={videoRef}
             src="/hero-video.mp4"
@@ -90,15 +104,15 @@ export default function LandingPage() {
             preload="auto"
             className="w-full h-full object-cover scale-105"
           />
-          {/* Translucent overlay maintaining crisp text contrast while showcasing video motion */}
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px]" />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/45 to-white/90" />
+          {/* Subtle dark gradient overlay to ensure text legibility while keeping video 100% visible */}
+          <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-[0.5px]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-transparent to-slate-950/75" />
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
           {/* Top Pill / Online Indicator + Sound Toggle */}
           <div className="flex flex-wrap items-center justify-center gap-2.5 mb-4">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-emerald-300 text-emerald-800 text-xs font-bold shadow-md shadow-emerald-500/10">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-emerald-400/50 text-emerald-300 text-xs font-bold shadow-lg shadow-black/40">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -110,8 +124,8 @@ export default function LandingPage() {
               </span>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-blue-300 text-blue-800 text-xs font-bold shadow-md shadow-blue-500/10">
-              <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-blue-400/50 text-blue-300 text-xs font-bold shadow-lg shadow-black/40">
+              <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
               <span>Strictly 18+ Adult Community</span>
             </div>
 
@@ -124,17 +138,17 @@ export default function LandingPage() {
                   setIsVideoMuted(videoRef.current.muted);
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-bold backdrop-blur-md border border-slate-300 shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/85 hover:bg-slate-900 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg shadow-black/40 transition-all cursor-pointer"
               title={isVideoMuted ? "Unmute background video" : "Mute background video"}
             >
               {isVideoMuted ? (
                 <>
-                  <VolumeX className="h-3.5 w-3.5 text-slate-500" />
+                  <VolumeX className="h-3.5 w-3.5 text-slate-300" />
                   <span>Unmute Video</span>
                 </>
               ) : (
                 <>
-                  <Volume2 className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                  <Volume2 className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
                   <span>Sound Playing</span>
                 </>
               )}
@@ -143,9 +157,9 @@ export default function LandingPage() {
 
           {/* Main Headline */}
           <div className="text-center max-w-4xl mx-auto space-y-2">
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 leading-tight drop-shadow-sm">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] leading-tight">
               Instant Live Video & Text Discovery —{" "}
-              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
                 Zero Confusion
               </span>
             </h1>
