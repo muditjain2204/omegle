@@ -263,6 +263,7 @@ export default function VideoChatPage() {
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMirrored, setIsMirrored] = useState(true);
+  const [isRemoteMirrored, setIsRemoteMirrored] = useState(false);
 
   // Live status & caption
   const [liveCaption, setLiveCaption] = useState("Ready to chat. Click 'Start Video Matching' to meet someone!");
@@ -1131,7 +1132,10 @@ export default function VideoChatPage() {
                       e.currentTarget.play().catch(() => {});
                     }
                   }}
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  style={{
+                    transform: isRemoteMirrored ? "scaleX(-1)" : "none",
+                  }}
+                  className={`w-full h-full object-cover transition-all duration-200 ${
                     hasRemoteStream ? "opacity-100" : "opacity-0 absolute inset-0 pointer-events-none"
                   }`}
                 />
@@ -1161,6 +1165,25 @@ export default function VideoChatPage() {
                 <div className="absolute top-4 left-4 z-10 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-white text-xs font-semibold flex items-center gap-1.5">
                   <span>{peerInfo?.displayName || "Connected Partner"}</span>
                   <span className="text-[10px] text-emerald-400 font-normal">Live</span>
+
+                  {/* Remote Mirror Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsRemoteMirrored((prev) => !prev);
+                    }}
+                    className={`ml-1 px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                      isRemoteMirrored
+                        ? "bg-blue-600 text-white ring-1 ring-blue-400"
+                        : "bg-white/20 hover:bg-white/30 text-white"
+                    }`}
+                    title={isRemoteMirrored ? "Remote view mirrored (click to reset)" : "Mirror remote video view"}
+                  >
+                    <FlipHorizontal className="h-3 w-3" />
+                    <span>{isRemoteMirrored ? "Mirrored" : "Mirror"}</span>
+                  </button>
                   {isRemoteMutedForEcho && (
                     <button
                       onClick={() => {
@@ -1328,9 +1351,10 @@ export default function VideoChatPage() {
                     e.currentTarget.play().catch(() => {});
                   }
                 }}
-                className={`w-full h-full object-cover transition-opacity duration-200 ${
-                  isMirrored && !isVirtualCam ? "-scale-x-1" : ""
-                } ${
+                style={{
+                  transform: isMirrored ? "scaleX(-1)" : "none",
+                }}
+                className={`w-full h-full object-cover transition-all duration-200 ${
                   isVideoDisabled || !hasCameraStream ? "opacity-0 absolute inset-0 pointer-events-none" : "opacity-100"
                 }`}
               />
@@ -1364,13 +1388,23 @@ export default function VideoChatPage() {
                     </button>
                   )}
                 </div>
-                {!isVirtualCam && hasCameraStream && !isVideoDisabled && (
+                {!isVideoDisabled && (
                   <button
-                    onClick={() => setIsMirrored(!isMirrored)}
-                    className="p-1 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-md text-white/80 hover:text-white transition-all cursor-pointer pointer-events-auto"
-                    title={isMirrored ? "Mirror mode ON (click for normal view)" : "Mirror mode OFF (click for mirror view)"}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsMirrored((prev) => !prev);
+                    }}
+                    className={`px-1.5 py-0.5 rounded-md backdrop-blur-md text-[10px] font-semibold transition-all cursor-pointer pointer-events-auto flex items-center gap-1 shadow-md ${
+                      isMirrored
+                        ? "bg-blue-600 text-white ring-1 ring-blue-400"
+                        : "bg-black/70 hover:bg-black/90 text-white/80 hover:text-white"
+                    }`}
+                    title={isMirrored ? "Self Mirror: ON (click to unmirror)" : "Self Mirror: OFF (click to mirror)"}
                   >
-                    <FlipHorizontal className={`h-3 w-3 ${isMirrored ? "text-blue-400" : "text-slate-400"}`} />
+                    <FlipHorizontal className={`h-3 w-3 ${isMirrored ? "text-white" : "text-slate-300"}`} />
+                    <span>{isMirrored ? "Mirrored" : "Mirror"}</span>
                   </button>
                 )}
               </div>
@@ -1437,6 +1471,25 @@ export default function VideoChatPage() {
                 title={isVideoDisabled ? "Enable Video" : "Disable Video"}
               >
                 {isVideoDisabled ? <VideoOff className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />}
+              </button>
+
+              {/* Mirror Toggle Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMirrored((prev) => !prev);
+                  if (matchStatus === "CONNECTED") {
+                    setIsRemoteMirrored((prev) => !prev);
+                  }
+                }}
+                className={`p-2 sm:p-2.5 rounded-full transition-colors ${
+                  isMirrored || isRemoteMirrored
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "text-white/90 hover:text-white hover:bg-white/20"
+                }`}
+                title={isMirrored ? "Mirror View: ON (click to unmirror)" : "Mirror View: OFF (click to mirror)"}
+              >
+                <FlipHorizontal className="h-4 w-4" />
               </button>
 
               {/* Fullscreen Toggle */}
