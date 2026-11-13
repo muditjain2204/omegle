@@ -23,6 +23,9 @@ import {
   UserCheck,
   MessageSquare,
   FlipHorizontal,
+  SlidersHorizontal,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import PricingModal from "@/components/PricingModal";
@@ -264,6 +267,9 @@ export default function VideoChatPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMirrored, setIsMirrored] = useState(true);
   const [isRemoteMirrored, setIsRemoteMirrored] = useState(false);
+  const [pipSize, setPipSize] = useState<"sm" | "md" | "lg">("md");
+  const [cameraZoom, setCameraZoom] = useState<number>(1);
+  const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
 
   // Live status & caption
   const [liveCaption, setLiveCaption] = useState("Ready to chat. Click 'Start Video Matching' to meet someone!");
@@ -1332,7 +1338,15 @@ export default function VideoChatPage() {
             )}
 
             {/* Picture-in-Picture Local Camera (Top Right) */}
-            <div className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 z-20 w-24 sm:w-36 md:w-40 aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden border-2 border-white/60 shadow-xl bg-slate-900 group">
+            <div
+              className={`absolute top-2.5 right-2.5 sm:top-3 sm:right-3 z-20 transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-white/60 shadow-2xl bg-slate-900 group ${
+                pipSize === "sm"
+                  ? "w-28 sm:w-36 md:w-44 aspect-[4/3]"
+                  : pipSize === "lg"
+                  ? "w-48 sm:w-64 md:w-80 aspect-[4/3]"
+                  : "w-36 sm:w-48 md:w-60 aspect-[4/3]"
+              }`}
+            >
               <video
                 ref={(el) => {
                   localVideoRef.current = el;
@@ -1346,15 +1360,19 @@ export default function VideoChatPage() {
                 onLoadedMetadata={(e) => {
                   e.currentTarget.play().catch(() => {});
                 }}
+                onCanPlay={(e) => {
+                  e.currentTarget.play().catch(() => {});
+                }}
                 onPause={(e) => {
                   if (e.currentTarget.srcObject && !isVideoDisabled) {
                     e.currentTarget.play().catch(() => {});
                   }
                 }}
                 style={{
-                  transform: isMirrored ? "scaleX(-1)" : "none",
+                  transform: `scaleX(${isMirrored ? -1 : 1}) scale(${cameraZoom})`,
+                  transformOrigin: "center center",
                 }}
-                className={`w-full h-full object-cover transition-all duration-200 ${
+                className={`w-full h-full object-cover transition-transform duration-150 ${
                   isVideoDisabled || !hasCameraStream ? "opacity-0 absolute inset-0 pointer-events-none" : "opacity-100"
                 }`}
               />
@@ -1372,8 +1390,51 @@ export default function VideoChatPage() {
                   <span className="text-[9px] font-semibold">Camera Off</span>
                 </div>
               )}
+
+              {/* Top Quick Actions Bar (Hover or Active) */}
+              <div className="absolute top-1.5 right-1.5 flex items-center gap-1 z-30 opacity-90 hover:opacity-100 transition-opacity">
+                {/* Current Zoom badge */}
+                {cameraZoom > 1 && (
+                  <span className="px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-[9px] font-mono font-bold text-blue-400 border border-blue-500/30 shadow-sm">
+                    {cameraZoom.toFixed(1)}x
+                  </span>
+                )}
+
+                {/* Open Scale & Zoom Controls */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowScaleControls(!showScaleControls);
+                  }}
+                  className={`p-1 rounded-md backdrop-blur-md transition-all cursor-pointer shadow-md ${
+                    showScaleControls
+                      ? "bg-blue-600 text-white"
+                      : "bg-black/60 hover:bg-black/80 text-white/80 hover:text-white"
+                  }`}
+                  title="Customize camera footage scale & zoom"
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                </button>
+
+                {/* Quick cycle PiP size (Small -> Medium -> Large) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setPipSize((s) => (s === "sm" ? "md" : s === "md" ? "lg" : "sm"));
+                  }}
+                  className="p-1 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-md text-white/80 hover:text-white transition-all cursor-pointer shadow-md"
+                  title={`Cycle size: currently ${pipSize.toUpperCase()} (click to change)`}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
+              </div>
+
               {/* Local Tag & Mirror toggle */}
-              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
+              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none z-30">
                 <div className="flex items-center gap-1 pointer-events-auto">
                   <span className="px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[10px] font-semibold text-white">
                     {user?.profile?.displayName || "You"}
@@ -1409,6 +1470,137 @@ export default function VideoChatPage() {
                 )}
               </div>
             </div>
+
+            {/* Floating Camera Footage Scale Popover Menu */}
+            {showScaleControls && (
+              <div
+                className="absolute top-28 sm:top-36 md:top-40 right-2.5 sm:right-3 z-40 w-64 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-white/20 shadow-2xl text-white space-y-3 animate-in fade-in zoom-in-95 duration-150"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Popover Header */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-blue-400" />
+                    <span>Camera Footage Scale</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowScaleControls(false)}
+                    className="h-5 w-5 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center text-xs cursor-pointer transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Camera Zoom Control */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300 font-medium">Footage Zoom (Crop):</span>
+                    <span className="font-mono text-blue-400 font-bold bg-blue-950/60 border border-blue-500/30 px-1.5 py-0.5 rounded text-[10px]">
+                      {cameraZoom.toFixed(1)}x
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCameraZoom((z) => Math.max(1, Number((z - 0.1).toFixed(1))))}
+                      disabled={cameraZoom <= 1}
+                      className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white transition-colors cursor-pointer"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="h-3.5 w-3.5" />
+                    </button>
+                    <input
+                      type="range"
+                      min="1"
+                      max="2"
+                      step="0.05"
+                      value={cameraZoom}
+                      onChange={(e) => setCameraZoom(Number(e.target.value))}
+                      className="flex-1 accent-blue-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCameraZoom((z) => Math.min(2, Number((z + 0.1).toFixed(1))))}
+                      disabled={cameraZoom >= 2}
+                      className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white transition-colors cursor-pointer"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Preset Zoom Pills */}
+                  <div className="grid grid-cols-5 gap-1 pt-0.5">
+                    {[1.0, 1.2, 1.4, 1.6, 2.0].map((z) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={() => setCameraZoom(z)}
+                        className={`py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                          Math.abs(cameraZoom - z) < 0.05
+                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400"
+                            : "bg-white/10 text-slate-300 hover:bg-white/20"
+                        }`}
+                      >
+                        {z.toFixed(1)}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* PiP Box Size */}
+                <div className="space-y-1.5 pt-1 border-t border-white/10">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300 font-medium">Window Box Size:</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">{pipSize}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { key: "sm", label: "Small" },
+                      { key: "md", label: "Medium" },
+                      { key: "lg", label: "Large" },
+                    ].map((s) => (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => setPipSize(s.key as any)}
+                        className={`py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          pipSize === s.key
+                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400"
+                            : "bg-white/10 text-slate-300 hover:bg-white/20"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reset button */}
+                <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraZoom(1);
+                      setPipSize("md");
+                      setIsMirrored(true);
+                    }}
+                    className="text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowScaleControls(false)}
+                    className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Glassmorphism Floating Control Bar (Bottom Center, matching reference image) */}
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 sm:gap-2.5 px-3 py-1.5 rounded-full bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl">
