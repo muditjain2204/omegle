@@ -7,16 +7,21 @@ import { ProductType, PurchaseStatus, Purchase } from "@prisma/client";
 
 const router = Router();
 
-// Initialize Razorpay SDK if credentials are provided in environment
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || "";
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
+// Helper function to read dynamic Razorpay credentials from environment
+export function getRazorpayConfig() {
+  const keyId = (process.env.RAZORPAY_KEY_ID || "").trim();
+  const keySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || keySecret || "").trim();
 
-const razorpay = (razorpayKeyId && razorpayKeySecret)
-  ? new Razorpay({
-      key_id: razorpayKeyId,
-      key_secret: razorpayKeySecret,
-    })
-  : null;
+  const client = (keyId && keySecret)
+    ? new Razorpay({
+        key_id: keyId,
+        key_secret: keySecret,
+      })
+    : null;
+
+  return { keyId, keySecret, webhookSecret, client };
+}
 
 // Reusable, idempotent balance settlement helper
 export async function creditPurchase(purchaseId: string, paymentId?: string) {
@@ -135,12 +140,13 @@ export async function creditPurchase(purchaseId: string, paymentId?: string) {
 
 // Gateway status & capabilities endpoint
 router.get("/gateway-status", (req, res) => {
+  const { keyId, client } = getRazorpayConfig();
   res.json({
     gateway: "Razorpay",
-    isConfigured: !!(razorpayKeyId && razorpayKeySecret),
+    isConfigured: !!client,
     supportsInternational: true,
     currenciesSupported: ["INR", "USD", "EUR", "GBP", "AUD", "CAD", "SGD", "AED"],
-    keyId: razorpayKeyId || null,
+    keyId: keyId || null,
   });
 });
 
@@ -212,11 +218,18 @@ router.get("/products", (req, res) => {
   });
 });
 
-// Create Order (Simulated or Razorpay)
+// Create Real Production Razorpay Order
 router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { productType, currency = "INR" } = req.body;
+    const { keyId, client: rzpClient } = getRazorpayConfig();
+
+    if (!rzpClient || !keyId) {
+      return res.status(503).json({
+        error: "Razorpay payment gateway is not initialized on the server. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in server environment variables.",
+      });
+    }
 
     let amountPaise = 0;
     let description = "";
@@ -233,27 +246,16 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
       return res.status(400).json({ error: "Invalid product selected" });
     }
 
-    let razorpayOrderId = `order_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    let isLiveGateway = false;
-
-    // If Razorpay SDK is configured with valid credentials, call Razorpay Orders API
-    if (razorpay) {
-      try {
-        const rzpOrder = await razorpay.orders.create({
-          amount: amountPaise,
-          currency: currency.toUpperCase(),
-          receipt: `rcpt_${Date.now().toString().slice(-8)}`,
-          notes: {
-            userId,
-            productType,
-          },
-        });
-        razorpayOrderId = rzpOrder.id;
-        isLiveGateway = true;
-      } catch (rzpErr: any) {
-        console.error("Razorpay order creation error:", rzpErr);
-      }
-    }
+    // Call real Razorpay Orders API
+    const rzpOrder = await rzpClient.orders.create({
+      amount: amountPaise,
+      currency: currency.toUpperCase(),
+      receipt: `rcpt_${Date.now().toString().slice(-8)}`,
+      notes: {
+        userId,
+        productType,
+      },
+    });
 
     const purchase = await prisma.purchase.create({
       data: {
@@ -261,24 +263,25 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
         productType,
         amountPaise,
         currency: currency.toUpperCase(),
-        razorpayOrderId,
+        razorpayOrderId: rzpOrder.id,
         status: PurchaseStatus.PENDING,
       },
     });
 
     return res.json({
       purchaseId: purchase.id,
-      orderId: razorpayOrderId,
+      orderId: rzpOrder.id,
       amountPaise,
       currency: currency.toUpperCase(),
       productType,
       description,
-      keyId: razorpayKeyId || "rzp_test_mock_key_123",
-      isLiveGateway,
+      keyId,
     });
   } catch (error: any) {
-    console.error("Create order error:", error);
-    return res.status(500).json({ error: "Failed to initialize order" });
+    console.error("Razorpay create-order error:", error);
+    return res.status(500).json({
+      error: error?.error?.description || error?.message || "Failed to initialize order with Razorpay",
+    });
   }
 });
 
@@ -287,6 +290,17 @@ router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) =
   try {
     const userId = req.user!.id;
     const { purchaseId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
+    const { keySecret } = getRazorpayConfig();
+
+    if (!keySecret) {
+      return res.status(503).json({ error: "Razorpay payment gateway secret is not configured on the server" });
+    }
+
+    if (!purchaseId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({
+        error: "Missing required payment verification parameters (purchaseId, razorpayPaymentId, razorpaySignature required)",
+      });
+    }
 
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
@@ -301,18 +315,16 @@ router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) =
       return res.json({ success: true, message: "Purchase already processed", usageBalance: existingBalance });
     }
 
-    // Verify cryptographic signature if secret & signature exist
-    if (razorpayKeySecret && razorpaySignature) {
-      const orderIdToVerify = razorpayOrderId || purchase.razorpayOrderId;
-      const expectedSignature = crypto
-        .createHmac("sha256", razorpayKeySecret)
-        .update(`${orderIdToVerify}|${razorpayPaymentId}`)
-        .digest("hex");
+    // Strict cryptographic HMAC SHA-256 signature verification
+    const orderIdToVerify = razorpayOrderId || purchase.razorpayOrderId;
+    const expectedSignature = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${orderIdToVerify}|${razorpayPaymentId}`)
+      .digest("hex");
 
-      if (expectedSignature !== razorpaySignature) {
-        console.error("Razorpay signature verification mismatch");
-        return res.status(400).json({ error: "Invalid payment signature verification failed" });
-      }
+    if (expectedSignature !== razorpaySignature) {
+      console.error("Razorpay signature verification mismatch for purchase:", purchaseId);
+      return res.status(400).json({ error: "Payment verification failed: Invalid digital signature from Razorpay" });
     }
 
     const result = await creditPurchase(purchase.id, razorpayPaymentId);
@@ -332,19 +344,21 @@ router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) =
 router.post("/webhook", async (req: any, res: Response) => {
   try {
     const signature = req.headers["x-razorpay-signature"] as string;
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || razorpayKeySecret;
+    const { webhookSecret } = getRazorpayConfig();
 
-    if (webhookSecret && signature) {
-      const bodyToVerify = req.rawBody ? req.rawBody.toString("utf8") : JSON.stringify(req.body);
-      const expectedSignature = crypto
-        .createHmac("sha256", webhookSecret)
-        .update(bodyToVerify)
-        .digest("hex");
+    if (!webhookSecret || !signature) {
+      return res.status(400).json({ error: "Webhook secret or signature missing" });
+    }
 
-      if (expectedSignature !== signature) {
-        console.warn("Invalid webhook signature received");
-        return res.status(400).json({ error: "Invalid signature" });
-      }
+    const bodyToVerify = req.rawBody ? req.rawBody.toString("utf8") : JSON.stringify(req.body);
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(bodyToVerify)
+      .digest("hex");
+
+    if (expectedSignature !== signature) {
+      console.warn("Invalid webhook signature received from Razorpay");
+      return res.status(400).json({ error: "Invalid signature" });
     }
 
     const event = req.body?.event;

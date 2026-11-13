@@ -39,7 +39,6 @@ export interface RazorpayOrderPayload {
   productType: string;
   description?: string;
   keyId: string;
-  isLiveGateway?: boolean;
 }
 
 export interface CheckoutOptions {
@@ -57,17 +56,9 @@ export async function openRazorpayCheckout({
   onError,
   onDismiss,
 }: CheckoutOptions) {
-  // If Razorpay live gateway keys are not configured yet, offer mock settlement in dev
-  if (!orderData.isLiveGateway && (!orderData.keyId || orderData.keyId.includes("mock"))) {
-    try {
-      const mockPayId = `mock_pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      const verifyRes = await verifyPayment(orderData.purchaseId, mockPayId);
-      onSuccess(verifyRes);
-      return;
-    } catch (err: any) {
-      onError(err);
-      return;
-    }
+  if (!orderData.keyId) {
+    onError(new Error("Razorpay Key ID is not configured. Please set up the payment gateway in production."));
+    return;
   }
 
   const isLoaded = await loadRazorpayScript();
@@ -94,7 +85,7 @@ export async function openRazorpayCheckout({
             response.razorpay_signature
           );
           onSuccess(verifyRes);
-        } catch (err: any) {
+        } catch (err) {
           onError(err);
         }
       },
