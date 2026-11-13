@@ -248,7 +248,7 @@ export default function VideoChatPage() {
       // 1. Try real physical camera and microphone
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
         localStreamRef.current = stream;
@@ -258,12 +258,24 @@ export default function VideoChatPage() {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.play().catch(() => {});
         }
+        // Update active WebRTC connection if already open
+        if (peerConnectionRef.current) {
+          const senders = peerConnectionRef.current.getSenders();
+          stream.getTracks().forEach((track) => {
+            const sender = senders.find((s) => s.track && s.track.kind === track.kind);
+            if (sender) {
+              sender.replaceTrack(track).catch(() => {});
+            } else {
+              peerConnectionRef.current?.addTrack(track, stream);
+            }
+          });
+        }
         return;
       } catch (err: any) {
         console.warn("Full camera+mic access failed, checking fallback:", err?.name || err);
       }
 
-      // 2. Try physical camera only (in case mic is locked)
+      // 2. Try physical camera video-only (in case microphone is locked or busy)
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -278,6 +290,17 @@ export default function VideoChatPage() {
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.play().catch(() => {});
+        }
+        if (peerConnectionRef.current) {
+          const senders = peerConnectionRef.current.getSenders();
+          stream.getTracks().forEach((track) => {
+            const sender = senders.find((s) => s.track && s.track.kind === track.kind);
+            if (sender) {
+              sender.replaceTrack(track).catch(() => {});
+            } else {
+              peerConnectionRef.current?.addTrack(track, stream);
+            }
+          });
         }
         return;
       } catch (err: any) {
@@ -296,6 +319,17 @@ export default function VideoChatPage() {
         localVideoRef.current.srcObject = virtualStream;
         localVideoRef.current.play().catch(() => {});
       }
+      if (peerConnectionRef.current) {
+        const senders = peerConnectionRef.current.getSenders();
+        virtualStream.getTracks().forEach((track) => {
+          const sender = senders.find((s) => s.track && s.track.kind === track.kind);
+          if (sender) {
+            sender.replaceTrack(track).catch(() => {});
+          } else {
+            peerConnectionRef.current?.addTrack(track, virtualStream);
+          }
+        });
+      }
     }
     startCamera();
 
@@ -308,7 +342,7 @@ export default function VideoChatPage() {
         if (intervalId) clearInterval(intervalId);
       }
     };
-  }, [authChecking]);
+  }, []);
 
   // Ensure remote and local videos stay playing continuously
   useEffect(() => {
@@ -316,7 +350,15 @@ export default function VideoChatPage() {
       if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
-      remoteVideoRef.current.play().catch(() => {});
+      const promise = remoteVideoRef.current.play();
+      if (promise !== undefined) {
+        promise.catch(() => {
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.muted = true;
+            remoteVideoRef.current.play().catch(() => {});
+          }
+        });
+      }
     }
   }, [hasRemoteStream, matchStatus]);
 
@@ -369,13 +411,31 @@ export default function VideoChatPage() {
     };
 
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        remoteStreamRef.current = event.streams[0];
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          remoteVideoRef.current.play().catch(() => {});
+      let stream = event.streams && event.streams[0];
+      if (!stream) {
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
         }
-        setHasRemoteStream(true);
+        remoteStreamRef.current.addTrack(event.track);
+        stream = remoteStreamRef.current;
+      } else {
+        remoteStreamRef.current = stream;
+      }
+
+      setHasRemoteStream(true);
+      if (remoteVideoRef.current) {
+        if (remoteVideoRef.current.srcObject !== stream) {
+          remoteVideoRef.current.srcObject = stream;
+        }
+        const promise = remoteVideoRef.current.play();
+        if (promise !== undefined) {
+          promise.catch(() => {
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.muted = true;
+              remoteVideoRef.current.play().catch(() => {});
+            }
+          });
+        }
       }
     };
 
