@@ -47,13 +47,18 @@ function createSilentAudioTrack(): MediaStreamTrack | null {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return null;
     const ctx = new AudioContextClass();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const dest = ctx.createMediaStreamDestination();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    gain.gain.value = 0; // complete silence
+    gain.gain.value = 0.0001; // tiny active amplitude to keep stream active
     osc.connect(gain);
     gain.connect(dest);
-    osc.start();
+    try {
+      osc.start();
+    } catch (e) {}
     return dest.stream.getAudioTracks()[0] || null;
   } catch (e) {
     return null;
@@ -63,14 +68,26 @@ function createSilentAudioTrack(): MediaStreamTrack | null {
 /**
  * Generates an active, animated 30fps virtual camera MediaStream on an HTML5 canvas.
  * Allows seamless WebRTC video calls in multiple tabs simultaneously on the same machine
- * without failing due to hardware camera lock (e.g. Linux /dev/video0 exclusive access).
+ * without failing due to hardware camera lock (e.g. Linux /dev/video0 or Windows DirectShow exclusive access).
  */
 function createVirtualMediaStream(displayName: string, subtitle: string): MediaStream {
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 480;
-  const ctx = canvas.getContext("2d");
+  let canvas = (typeof document !== "undefined" ? document.getElementById("virtual-webrtc-canvas") : null) as HTMLCanvasElement;
+  if (!canvas && typeof document !== "undefined") {
+    canvas = document.createElement("canvas");
+    canvas.id = "virtual-webrtc-canvas";
+    canvas.width = 640;
+    canvas.height = 480;
+    canvas.style.position = "fixed";
+    canvas.style.left = "-9999px";
+    canvas.style.top = "-9999px";
+    canvas.style.width = "1px";
+    canvas.style.height = "1px";
+    canvas.style.opacity = "0";
+    canvas.style.pointerEvents = "none";
+    document.body.appendChild(canvas);
+  }
 
+  const ctx = canvas?.getContext("2d");
   let frame = 0;
   const initial = displayName?.charAt(0)?.toUpperCase() || "U";
 
@@ -145,16 +162,23 @@ function createVirtualMediaStream(displayName: string, subtitle: string): MediaS
     }
   }
 
+  let animId: number | null = null;
+  const renderLoop = () => {
+    draw();
+    animId = requestAnimationFrame(renderLoop);
+  };
+  animId = requestAnimationFrame(renderLoop);
   const intervalId = setInterval(draw, 1000 / 30);
   draw();
 
-  const canvasStream = canvas.captureStream(30);
+  const canvasStream = canvas ? canvas.captureStream(30) : new MediaStream();
   const audioTrack = createSilentAudioTrack();
   if (audioTrack) {
     canvasStream.addTrack(audioTrack);
   }
 
   (canvasStream as any)._canvasInterval = intervalId;
+  (canvasStream as any)._canvasAnimId = animId;
   return canvasStream;
 }
 
@@ -205,6 +229,7 @@ export default function VideoChatPage() {
   // Modals
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isRemoteAutoplayMuted, setIsRemoteAutoplayMuted] = useState(false);
 
   // Media streams & WebRTC
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -217,6 +242,50 @@ export default function VideoChatPage() {
   const cameraStartedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Helper to ensure local video preview plays reliably without audio interference or autoplay blockage
+  const attachLocalStream = (stream: MediaStream) => {
+    localStreamRef.current = stream;
+    setHasCameraStream(true);
+    if (localVideoRef.current) {
+      localVideoRef.current.muted = true;
+      localVideoRef.current.defaultMuted = true;
+      try {
+        // Strip audio track from local preview: local camera only needs video
+        const videoTracks = stream.getVideoTracks();
+        if (videoTracks.length > 0) {
+          localVideoRef.current.srcObject = new MediaStream(videoTracks);
+        } else {
+          localVideoRef.current.srcObject = stream;
+        }
+      } catch (e) {
+        localVideoRef.current.srcObject = stream;
+      }
+      localVideoRef.current.play().catch(() => {});
+    }
+  };
+
+  // Helper to ensure remote video plays reliably even if browser autoplay blocks unmuted audio
+  const attachRemoteStream = (stream: MediaStream) => {
+    remoteStreamRef.current = stream;
+    setHasRemoteStream(true);
+    if (remoteVideoRef.current) {
+      if (remoteVideoRef.current.srcObject !== stream) {
+        remoteVideoRef.current.srcObject = stream;
+      }
+      const playPromise = remoteVideoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Remote autoplay blocked by audio policy, falling back to muted play:", err);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.muted = true;
+            setIsRemoteAutoplayMuted(true);
+            remoteVideoRef.current.play().catch(() => {});
+          }
+        });
+      }
+    }
+  };
 
   // Keep a ref of user to avoid re-binding effects on balance updates
   const userRef = useRef<UserProfile | null>(user);
@@ -251,13 +320,9 @@ export default function VideoChatPage() {
           video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
-        localStreamRef.current = stream;
-        setHasCameraStream(true);
         setIsVirtualCam(false);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.play().catch(() => {});
-        }
+        attachLocalStream(stream);
+
         // Update active WebRTC connection if already open
         if (peerConnectionRef.current) {
           const senders = peerConnectionRef.current.getSenders();
@@ -284,13 +349,9 @@ export default function VideoChatPage() {
         const silentAudio = createSilentAudioTrack();
         if (silentAudio) stream.addTrack(silentAudio);
 
-        localStreamRef.current = stream;
-        setHasCameraStream(true);
         setIsVirtualCam(false);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.play().catch(() => {});
-        }
+        attachLocalStream(stream);
+
         if (peerConnectionRef.current) {
           const senders = peerConnectionRef.current.getSenders();
           stream.getTracks().forEach((track) => {
@@ -312,13 +373,9 @@ export default function VideoChatPage() {
       const displayName = userRef.current?.profile?.displayName || "You";
       const virtualStream = createVirtualMediaStream(displayName, "Camera in Tab 1 • Virtual Feed");
       virtualCanvasStreamRef.current = virtualStream;
-      localStreamRef.current = virtualStream;
-      setHasCameraStream(true);
       setIsVirtualCam(true);
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = virtualStream;
-        localVideoRef.current.play().catch(() => {});
-      }
+      attachLocalStream(virtualStream);
+
       if (peerConnectionRef.current) {
         const senders = peerConnectionRef.current.getSenders();
         virtualStream.getTracks().forEach((track) => {
@@ -340,34 +397,22 @@ export default function VideoChatPage() {
       if (virtualCanvasStreamRef.current) {
         const intervalId = (virtualCanvasStreamRef.current as any)._canvasInterval;
         if (intervalId) clearInterval(intervalId);
+        const animId = (virtualCanvasStreamRef.current as any)._canvasAnimId;
+        if (animId && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(animId);
       }
     };
   }, []);
 
   // Ensure remote and local videos stay playing continuously
   useEffect(() => {
-    if (hasRemoteStream && remoteVideoRef.current && remoteStreamRef.current) {
-      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
-      }
-      const promise = remoteVideoRef.current.play();
-      if (promise !== undefined) {
-        promise.catch(() => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.muted = true;
-            remoteVideoRef.current.play().catch(() => {});
-          }
-        });
-      }
+    if (hasRemoteStream && remoteStreamRef.current) {
+      attachRemoteStream(remoteStreamRef.current);
     }
   }, [hasRemoteStream, matchStatus]);
 
   useEffect(() => {
-    if (hasCameraStream && localVideoRef.current && localStreamRef.current) {
-      if (localVideoRef.current.srcObject !== localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-      }
-      localVideoRef.current.play().catch(() => {});
+    if (hasCameraStream && localStreamRef.current) {
+      attachLocalStream(localStreamRef.current);
     }
   }, [hasCameraStream, isVideoDisabled]);
 
@@ -418,25 +463,8 @@ export default function VideoChatPage() {
         }
         remoteStreamRef.current.addTrack(event.track);
         stream = remoteStreamRef.current;
-      } else {
-        remoteStreamRef.current = stream;
       }
-
-      setHasRemoteStream(true);
-      if (remoteVideoRef.current) {
-        if (remoteVideoRef.current.srcObject !== stream) {
-          remoteVideoRef.current.srcObject = stream;
-        }
-        const promise = remoteVideoRef.current.play();
-        if (promise !== undefined) {
-          promise.catch(() => {
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.muted = true;
-              remoteVideoRef.current.play().catch(() => {});
-            }
-          });
-        }
-      }
+      attachRemoteStream(stream);
     };
 
     pc.onconnectionstatechange = () => {
@@ -718,6 +746,7 @@ export default function VideoChatPage() {
     }
     setHasRemoteStream(false);
     setIsRemoteMutedForEcho(false);
+    setIsRemoteAutoplayMuted(false);
     iceCandidatesQueue.current = [];
     const socket = getSocket();
     socket.emit("next-match");
@@ -734,6 +763,7 @@ export default function VideoChatPage() {
     }
     setHasRemoteStream(false);
     setIsRemoteMutedForEcho(false);
+    setIsRemoteAutoplayMuted(false);
     iceCandidatesQueue.current = [];
     const socket = getSocket();
     socket.emit("leave-session");
@@ -758,13 +788,8 @@ export default function VideoChatPage() {
         virtualCanvasStreamRef.current = null;
       }
 
-      localStreamRef.current = stream;
-      setHasCameraStream(true);
       setIsVirtualCam(false);
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play().catch(() => {});
-      }
+      attachLocalStream(stream);
 
       // If active WebRTC peer connection exists, replace sender tracks
       if (peerConnectionRef.current) {
@@ -1038,6 +1063,21 @@ export default function VideoChatPage() {
                     >
                       <VolumeX className="h-3 w-3" />
                       <span>Echo Guard</span>
+                    </button>
+                  )}
+                  {isRemoteAutoplayMuted && (
+                    <button
+                      onClick={() => {
+                        if (remoteVideoRef.current) {
+                          remoteVideoRef.current.muted = false;
+                          setIsRemoteAutoplayMuted(false);
+                        }
+                      }}
+                      className="ml-1 px-2 py-0.5 rounded-full bg-amber-500 hover:bg-amber-600 text-[10px] text-white font-bold transition-all flex items-center gap-1 cursor-pointer animate-pulse shadow-md"
+                      title="Browser blocked unmuted sound. Click to enable sound."
+                    >
+                      <VolumeX className="h-3 w-3" />
+                      <span>Click to Unmute Audio</span>
                     </button>
                   )}
                 </div>
