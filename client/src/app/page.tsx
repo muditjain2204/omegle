@@ -100,22 +100,33 @@ export default function LandingPage() {
           </div>
 
           {/* Main Headline */}
-          <div className="text-center max-w-3xl mx-auto space-y-2">
+          <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
               Instant Live Video & Text Discovery —{" "}
               <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 bg-clip-text text-transparent">
                 Zero Confusion
               </span>
             </h1>
+          </div>
 
-            <p className="text-xs sm:text-sm text-slate-600 max-w-xl mx-auto font-normal leading-relaxed">
-              Connect with real people around the globe in seconds.{" "}
-              <strong className="text-emerald-700 font-semibold">Random chats are 100% free</strong>. Pay only if you choose gender filters or extended dating discovery.
-            </p>
+          {/* Hero Video Showcase on White Background */}
+          <div className="mt-6 max-w-4xl mx-auto">
+            <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-slate-200/80 border border-slate-200/90 bg-slate-950 aspect-video">
+              <video
+                src="/hero-video.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                controls
+                preload="auto"
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
 
           {/* ZERO CONFUSION ACTION CARDS */}
-          <div className="mt-6 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="mt-8 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Card A: 100% FREE RANDOM (GREEN HIGHLIGHT) */}
             <div className="relative rounded-3xl p-5 sm:p-6 border-2 border-emerald-500/80 bg-gradient-to-b from-emerald-50/50 via-white to-white shadow-xl shadow-emerald-500/5 flex flex-col justify-between">
               <div className="space-y-3">
