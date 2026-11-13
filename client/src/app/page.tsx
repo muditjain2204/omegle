@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Video,
@@ -15,6 +15,7 @@ import {
   Users,
   Lock,
   Volume2,
+  VolumeX,
   Mic,
   PhoneOff,
   Maximize2,
@@ -34,6 +35,8 @@ export default function LandingPage() {
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [selectedProductHighlight, setSelectedProductHighlight] = useState<string | undefined>();
   const [onlineCount, setOnlineCount] = useState<number>(0);
+  const [isVideoMuted, setIsVideoMuted] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     getCurrentUser().then((u) => setUser(u));
@@ -73,15 +76,29 @@ export default function LandingPage() {
         onOpenQuickStart={(mode) => openQuick(mode || "video")}
       />
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-6 pb-12 sm:pt-8 sm:pb-16 border-b border-slate-200 bg-white">
-        {/* Subtle background glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-blue-50/60 via-indigo-50/30 to-transparent pointer-events-none -z-10" />
+      {/* Hero Section with Full-Bleed Video Background Canvas */}
+      <section className="relative overflow-hidden pt-8 pb-16 sm:pt-12 sm:pb-20 border-b border-slate-200 min-h-[640px] flex items-center justify-center">
+        {/* Full Canvas Background Video covering the entire window */}
+        <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none select-none -z-10">
+          <video
+            ref={videoRef}
+            src="/hero-video.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            className="w-full h-full object-cover scale-105"
+          />
+          {/* Translucent overlay maintaining crisp text contrast while showcasing video motion */}
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/45 to-white/90" />
+        </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Top Pill / Online Indicator */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 mb-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-sm">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+          {/* Top Pill / Online Indicator + Sound Toggle */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 mb-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-emerald-300 text-emerald-800 text-xs font-bold shadow-md shadow-emerald-500/10">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -93,15 +110,40 @@ export default function LandingPage() {
               </span>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-blue-300 text-blue-800 text-xs font-bold shadow-md shadow-blue-500/10">
               <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
               <span>Strictly 18+ Adult Community</span>
             </div>
+
+            {/* Audio Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (videoRef.current) {
+                  videoRef.current.muted = !videoRef.current.muted;
+                  setIsVideoMuted(videoRef.current.muted);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-bold backdrop-blur-md border border-slate-300 shadow-md transition-all cursor-pointer"
+              title={isVideoMuted ? "Unmute background video" : "Mute background video"}
+            >
+              {isVideoMuted ? (
+                <>
+                  <VolumeX className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Unmute Video</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                  <span>Sound Playing</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Main Headline */}
-          <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+          <div className="text-center max-w-4xl mx-auto space-y-2">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 leading-tight drop-shadow-sm">
               Instant Live Video & Text Discovery —{" "}
               <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 bg-clip-text text-transparent">
                 Zero Confusion
@@ -109,26 +151,10 @@ export default function LandingPage() {
             </h1>
           </div>
 
-          {/* Hero Video Showcase on White Background */}
-          <div className="mt-6 max-w-4xl mx-auto">
-            <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-slate-200/80 border border-slate-200/90 bg-slate-950 aspect-video">
-              <video
-                src="/hero-video.mp4"
-                autoPlay
-                loop
-                muted
-                playsInline
-                controls
-                preload="auto"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-
           {/* ZERO CONFUSION ACTION CARDS */}
-          <div className="mt-8 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="mt-8 sm:mt-10 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Card A: 100% FREE RANDOM (GREEN HIGHLIGHT) */}
-            <div className="relative rounded-3xl p-5 sm:p-6 border-2 border-emerald-500/80 bg-gradient-to-b from-emerald-50/50 via-white to-white shadow-xl shadow-emerald-500/5 flex flex-col justify-between">
+            <div className="relative rounded-3xl p-5 sm:p-6 border-2 border-emerald-500/90 bg-white/95 backdrop-blur-xl shadow-2xl shadow-emerald-500/10 flex flex-col justify-between">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm">
@@ -185,7 +211,7 @@ export default function LandingPage() {
             </div>
 
             {/* Card B: PREFERRED GENDER & EXTENDED DATING (BLUE/GOLD HIGHLIGHT) */}
-            <div className="relative rounded-3xl p-5 sm:p-6 border-2 border-blue-500/80 bg-gradient-to-b from-blue-50/40 via-white to-white shadow-xl shadow-blue-500/5 flex flex-col justify-between">
+            <div className="relative rounded-3xl p-5 sm:p-6 border-2 border-blue-500/90 bg-white/95 backdrop-blur-xl shadow-2xl shadow-blue-500/10 flex flex-col justify-between">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm flex items-center gap-1">
