@@ -219,7 +219,7 @@ router.get("/products", (req, res) => {
 });
 
 // Create Real Production Razorpay Order
-router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post(["/create-order", "/orders"], authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { productType, currency = "INR" } = req.body;
@@ -242,8 +242,16 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
     } else if (productType === ProductType.DATING_PASS_7D) {
       amountPaise = 49900; // ₹499
       description = "7-Day Premium Dating Pass";
+    } else if (req.body.amount || req.body.amountPaise) {
+      amountPaise = Number(req.body.amount || req.body.amountPaise);
+      description = req.body.description || "OmeglePlus Payment";
     } else {
-      return res.status(400).json({ error: "Invalid product selected" });
+      return res.status(400).json({ error: "Invalid product selected or missing amount" });
+    }
+
+    // Razorpay requirement: minimum amount 100 paise (₹1.00)
+    if (!amountPaise || amountPaise < 100) {
+      return res.status(400).json({ error: "Amount must be at least 100 paise (₹1.00)" });
     }
 
     // Call real Razorpay Orders API
@@ -253,14 +261,14 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
       receipt: `rcpt_${Date.now().toString().slice(-8)}`,
       notes: {
         userId,
-        productType,
+        productType: productType || "CUSTOM",
       },
     });
 
     const purchase = await prisma.purchase.create({
       data: {
         userId,
-        productType,
+        productType: productType || ProductType.VIDEO_PACK_60M,
         amountPaise,
         currency: currency.toUpperCase(),
         razorpayOrderId: rzpOrder.id,
@@ -269,13 +277,17 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
     });
 
     return res.json({
-      purchaseId: purchase.id,
+      order_id: rzpOrder.id,
       orderId: rzpOrder.id,
+      amount: rzpOrder.amount,
       amountPaise,
       currency: currency.toUpperCase(),
+      receipt: rzpOrder.receipt,
+      purchaseId: purchase.id,
       productType,
       description,
       keyId,
+      key_id: keyId,
     });
   } catch (error: any) {
     console.error("Razorpay create-order error:", error);
@@ -286,53 +298,84 @@ router.post("/create-order", authMiddleware, async (req: AuthRequest, res: Respo
 });
 
 // Verify & Settle Purchase with Cryptographic HMAC Signature Check
-router.post("/verify", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post(["/verify", "/verify-payment"], authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { purchaseId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
+    const paymentId = (req.body.razorpayPaymentId || req.body.razorpay_payment_id || "").trim();
+    const orderId = (req.body.razorpayOrderId || req.body.razorpay_order_id || "").trim();
+    const signature = (req.body.razorpaySignature || req.body.razorpay_signature || "").trim();
+    const purchaseId = req.body.purchaseId;
+
     const { keySecret } = getRazorpayConfig();
 
     if (!keySecret) {
       return res.status(503).json({ error: "Razorpay payment gateway secret is not configured on the server" });
     }
 
-    if (!purchaseId || !razorpayPaymentId || !razorpaySignature) {
+    if (!paymentId || !signature) {
       return res.status(400).json({
-        error: "Missing required payment verification parameters (purchaseId, razorpayPaymentId, razorpaySignature required)",
+        error: "Missing required payment verification parameters (razorpay_payment_id, razorpay_signature required)",
       });
     }
 
-    const purchase = await prisma.purchase.findUnique({
-      where: { id: purchaseId },
-    });
+    // Find purchase either by purchaseId or by razorpayOrderId
+    let purchase = purchaseId
+      ? await prisma.purchase.findUnique({ where: { id: purchaseId } })
+      : null;
 
-    if (!purchase || purchase.userId !== userId) {
-      return res.status(404).json({ error: "Purchase record not found" });
+    if (!purchase && orderId) {
+      purchase = await prisma.purchase.findFirst({
+        where: { razorpayOrderId: orderId },
+      });
     }
 
-    if (purchase.status === PurchaseStatus.COMPLETED) {
-      const existingBalance = await prisma.usageBalance.findUnique({ where: { userId } });
-      return res.json({ success: true, message: "Purchase already processed", usageBalance: existingBalance });
+    const orderIdToVerify = orderId || purchase?.razorpayOrderId;
+    if (!orderIdToVerify) {
+      return res.status(400).json({
+        error: "Missing order_id for signature verification",
+      });
     }
 
     // Strict cryptographic HMAC SHA-256 signature verification
-    const orderIdToVerify = razorpayOrderId || purchase.razorpayOrderId;
+    // Algorithm: HMAC-SHA256(order_id + "|" + payment_id, KEY_SECRET)
     const expectedSignature = crypto
       .createHmac("sha256", keySecret)
-      .update(`${orderIdToVerify}|${razorpayPaymentId}`)
+      .update(`${orderIdToVerify}|${paymentId}`)
       .digest("hex");
 
-    if (expectedSignature !== razorpaySignature) {
-      console.error("Razorpay signature verification mismatch for purchase:", purchaseId);
-      return res.status(400).json({ error: "Payment verification failed: Invalid digital signature from Razorpay" });
+    if (expectedSignature !== signature) {
+      console.error("Razorpay signature verification mismatch for order:", orderIdToVerify);
+      return res.status(400).json({
+        success: false,
+        isVerified: false,
+        error: "Payment verification failed: Invalid digital signature from Razorpay",
+      });
     }
 
-    const result = await creditPurchase(purchase.id, razorpayPaymentId);
+    if (purchase) {
+      if (purchase.status === PurchaseStatus.COMPLETED) {
+        const existingBalance = await prisma.usageBalance.findUnique({ where: { userId: purchase.userId } });
+        return res.json({
+          success: true,
+          isVerified: true,
+          message: "Purchase already processed",
+          usageBalance: existingBalance,
+        });
+      }
+
+      const result = await creditPurchase(purchase.id, paymentId);
+      return res.json({
+        success: true,
+        isVerified: true,
+        message: "Payment successfully verified and balance credited!",
+        usageBalance: result.usageBalance,
+      });
+    }
 
     return res.json({
       success: true,
-      message: "Payment successfully verified and balance credited!",
-      usageBalance: result.usageBalance,
+      isVerified: true,
+      message: "Payment signature verified successfully",
     });
   } catch (error: any) {
     console.error("Payment verification error:", error);

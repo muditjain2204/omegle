@@ -56,7 +56,12 @@ export async function openRazorpayCheckout({
   onError,
   onDismiss,
 }: CheckoutOptions) {
-  if (!orderData.keyId) {
+  const keyId =
+    orderData.keyId ||
+    (orderData as any).key_id ||
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+
+  if (!keyId) {
     onError(new Error("Razorpay Key ID is not configured. Please set up the payment gateway in production."));
     return;
   }
@@ -69,13 +74,13 @@ export async function openRazorpayCheckout({
 
   try {
     const options: any = {
-      key: orderData.keyId,
-      amount: orderData.amountPaise,
+      key: keyId,
+      amount: orderData.amountPaise || (orderData as any).amount,
       currency: orderData.currency || "INR",
       name: "OmeglePlus",
       description: orderData.description || "Premium Social Discovery",
       image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80",
-      order_id: orderData.orderId,
+      order_id: orderData.orderId || (orderData as any).order_id,
       handler: async function (response: any) {
         try {
           const verifyRes = await verifyPayment(

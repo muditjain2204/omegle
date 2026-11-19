@@ -241,14 +241,22 @@ export async function createPaymentOrder(productType: string) {
 }
 
 export async function verifyPayment(
-  purchaseId: string,
+  purchaseId?: string,
   razorpayPaymentId?: string,
   razorpayOrderId?: string,
   razorpaySignature?: string
 ) {
   return fetchWithAuth("/api/payments/verify", {
     method: "POST",
-    body: JSON.stringify({ purchaseId, razorpayPaymentId, razorpayOrderId, razorpaySignature }),
+    body: JSON.stringify({
+      purchaseId,
+      razorpayPaymentId,
+      razorpayOrderId,
+      razorpaySignature,
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_order_id: razorpayOrderId,
+      razorpay_signature: razorpaySignature,
+    }),
   });
 }
 

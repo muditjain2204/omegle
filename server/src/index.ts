@@ -46,6 +46,16 @@ app.use("/api/safety", safetyRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/cron", cronRoutes);
 
+// Direct aliases for standard Razorpay checkout endpoints
+app.post("/api/create-order", (req, res, next) => {
+  req.url = "/create-order";
+  paymentsRoutes(req, res, next);
+});
+app.post("/api/verify-payment", (req, res, next) => {
+  req.url = "/verify";
+  paymentsRoutes(req, res, next);
+});
+
 // Setup Socket.IO
 setupSocketServer(server);
 
