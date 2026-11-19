@@ -211,17 +211,6 @@ export default function PricingPage() {
           </div>
         )}
 
-        {/* Razorpay International & Domestic Banner */}
-        <div className="max-w-4xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-wrap items-center justify-between gap-3 text-xs text-blue-900 shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-bold text-slate-900">Razorpay Payment Gateway:</span>
-            <span className="text-slate-600">UPI, Cards, NetBanking + 100+ International Currencies (USD, EUR, GBP, AUD, etc.)</span>
-          </div>
-          <span className="text-[11px] font-bold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs">
-            🌍 Worldwide Overseas Payments Supported
-          </span>
-        </div>
 
         {/* 4 Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
