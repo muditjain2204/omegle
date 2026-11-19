@@ -181,7 +181,7 @@ export default function DashboardPage() {
                 {user?.isDatingPremium ? "Active" : "Not Active"}
               </div>
               <p className="text-[11px] text-slate-500">
-                {user?.isDatingPremium ? "Unlimited discovery swipes unlocked." : "Requires ₹499/7-day pass after 15 matches."}
+                {user?.isDatingPremium ? "Unlimited discovery swipes unlocked." : "Requires ₹399/7-day pass after 15 matches."}
               </p>
             </div>
           </div>

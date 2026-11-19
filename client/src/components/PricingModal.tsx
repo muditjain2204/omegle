@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Crown, Video, MessageSquare, Heart, Shield, Sparkles, Gift, Tag, Globe, CreditCard } from "lucide-react";
+import { X, Check, Crown, Video, MessageSquare, Heart, Shield, Sparkles, Gift, Tag, Globe, CreditCard, Zap } from "lucide-react";
 import confetti from "canvas-confetti";
 import { createPaymentOrder, verifyPayment, redeemPromoCode, getCurrentUser, UserProfile } from "@/lib/api";
 import { openRazorpayCheckout } from "@/lib/razorpay";
@@ -37,6 +37,13 @@ export default function PricingModal({
     setMounted(true);
     getCurrentUser().then((u) => setCurrentUser(u)).catch(() => {});
   }, []);
+
+  // Refresh user balance when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      getCurrentUser().then((u) => setCurrentUser(u)).catch(() => {});
+    }
+  }, [isOpen]);
 
   // Lock background scrolling when modal is open
   useEffect(() => {
@@ -135,6 +142,23 @@ export default function PricingModal({
     }
   };
 
+  const videoSeconds = currentUser?.usageBalance?.paidVideoSecondsAvailable || 0;
+  const isVideoActive = videoSeconds > 0;
+  const videoMinsLeft = Math.ceil(videoSeconds / 60);
+
+  const textSeconds = currentUser?.usageBalance?.paidTextSecondsAvailable || 0;
+  const isTextActive = textSeconds > 0;
+  const textMinsLeft = Math.ceil(textSeconds / 60);
+
+  const datingExpiry = currentUser?.usageBalance?.datingPremiumExpiresAt;
+  const isDatingActive = Boolean(
+    currentUser?.isDatingPremium ||
+    (datingExpiry && new Date(datingExpiry) > new Date())
+  );
+  const datingDaysLeft = isDatingActive && datingExpiry
+    ? Math.max(1, Math.ceil((new Date(datingExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
   const products = [
     {
       id: "FREE_RANDOM",
@@ -153,12 +177,13 @@ export default function PricingModal({
       buttonText: "Current Plan",
       isFree: true,
       action: null,
+      isActive: false,
     },
     {
       id: "VIDEO_PACK_60M",
       title: "Preferred Gender Video",
       tier: "PREMIUM",
-      price: "₹599",
+      price: "₹299",
       duration: "60 Connected Minutes",
       description: "Match specifically with your preferred gender in live high-definition video.",
       features: [
@@ -168,16 +193,19 @@ export default function PricingModal({
         "Unused minutes never expire",
         "Priority queue matching",
       ],
-      buttonText: "Purchase Video Pack (₹599)",
+      buttonText: "Purchase Video Pack (₹299)",
       isFree: false,
       productType: "VIDEO_PACK_60M",
       popular: true,
+      isActive: isVideoActive,
+      activeStatusText: `${videoMinsLeft} mins left`,
+      topUpText: "Top Up (+60m for ₹299)",
     },
     {
       id: "TEXT_PACK_180M",
       title: "Preferred Gender Text",
       tier: "PREMIUM",
-      price: "₹299",
+      price: "₹99",
       duration: "180 Connected Minutes (3h)",
       description: "Filter live text conversations by your preferred gender.",
       features: [
@@ -187,15 +215,18 @@ export default function PricingModal({
         "Remaining minutes saved to your balance",
         "Typing indicators & instant delivery",
       ],
-      buttonText: "Purchase Text Pack (₹299)",
+      buttonText: "Purchase Text Pack (₹99)",
       isFree: false,
       productType: "TEXT_PACK_180M",
+      isActive: isTextActive,
+      activeStatusText: `${textMinsLeft} mins left`,
+      topUpText: "Top Up (+180m for ₹99)",
     },
     {
       id: "DATING_PASS_7D",
       title: "Premium Dating Pass",
       tier: "PREMIUM",
-      price: "₹499",
+      price: "₹399",
       duration: "7 Days Full Access",
       description: "Continue discovering profiles after the free 15 mutual matches.",
       features: [
@@ -205,9 +236,12 @@ export default function PricingModal({
         "See mutual likes instantly",
         "Existing matches always stay free",
       ],
-      buttonText: "Unlock Dating Pass (₹499)",
+      buttonText: "Unlock Dating Pass (₹399)",
       isFree: false,
       productType: "DATING_PASS_7D",
+      isActive: isDatingActive,
+      activeStatusText: `${datingDaysLeft} days left`,
+      topUpText: "Extend Pass (+7 Days for ₹399)",
     },
   ];
 
@@ -271,32 +305,41 @@ export default function PricingModal({
         {/* Pricing Cards Grid */}
         <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {products.map((p) => {
-            const isHighlighted = highlightProduct === p.productType || p.popular;
+            const isHighlighted = p.isActive || highlightProduct === p.productType || p.popular;
             return (
               <div
                 key={p.id}
                 className={`relative flex flex-col justify-between rounded-2xl p-6 border transition-all ${
-                  isHighlighted
+                  p.isActive
+                    ? "border-emerald-500 bg-emerald-50/20 shadow-lg ring-2 ring-emerald-400/50"
+                    : isHighlighted
                     ? "border-amber-400 bg-amber-50/20 shadow-lg ring-2 ring-amber-400/40"
                     : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
                 }`}
               >
-                {p.popular && (
+                {p.isActive ? (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                    Active Plan
+                  </span>
+                ) : p.popular ? (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-amber-500 text-white text-[11px] font-bold uppercase tracking-wider shadow">
                     Most Popular
                   </span>
-                )}
+                ) : null}
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span
                       className={`text-xs font-bold px-2 py-0.5 rounded-md ${
                         p.isFree
+                          ? "bg-slate-100 text-slate-700"
+                          : p.isActive
                           ? "bg-emerald-100 text-emerald-800"
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >
-                      {p.tier}
+                      {p.isActive ? "ACTIVE" : p.tier}
                     </span>
                     <span className="text-xs text-slate-500 font-medium">{p.duration}</span>
                   </div>
@@ -308,6 +351,19 @@ export default function PricingModal({
                       {p.isFree ? "/ standard" : "/ one-time pack"}
                     </span>
                   </div>
+
+                  {p.isActive && (
+                    <div className="mt-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between shadow-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Check className="h-4 w-4 text-emerald-600 shrink-0 stroke-[2.5]" />
+                        <span>Status: <strong>Active</strong></span>
+                      </div>
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                        {p.activeStatusText}
+                      </span>
+                    </div>
+                  )}
+
                   <p className="mt-2 text-xs text-slate-600 leading-relaxed">{p.description}</p>
 
                   <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-4">
@@ -328,6 +384,27 @@ export default function PricingModal({
                     >
                       Active Free Service
                     </button>
+                  ) : p.isActive ? (
+                    <div className="space-y-2">
+                      <div className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-default">
+                        <Check className="h-4 w-4 stroke-[2.5]" />
+                        <span>Active ({p.activeStatusText})</span>
+                      </div>
+                      <button
+                        onClick={() => p.productType && handlePurchase(p.productType)}
+                        disabled={processingId !== null}
+                        className="w-full py-2 rounded-xl border border-slate-300 hover:border-amber-400 hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        {processingId === p.productType ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-700 border-t-transparent" />
+                        ) : (
+                          <>
+                            <Zap className="h-3.5 w-3.5 text-amber-500" />
+                            <span>{p.topUpText}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => p.productType && handlePurchase(p.productType)}

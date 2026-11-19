@@ -76,7 +76,7 @@ export async function creditPurchase(purchaseId: string, paymentId?: string) {
         productType: purchase.productType,
         unitsSeconds: addedSeconds,
         balanceAfterSeconds: newBalanceSeconds,
-        remarks: "Purchased 60 mins Preferred Gender Video Pack (₹599 / International)",
+        remarks: "Purchased 60 mins Preferred Gender Video Pack (₹299 / International)",
       },
     });
   } else if (purchase.productType === ProductType.TEXT_PACK_180M) {
@@ -96,7 +96,7 @@ export async function creditPurchase(purchaseId: string, paymentId?: string) {
         productType: purchase.productType,
         unitsSeconds: addedSeconds,
         balanceAfterSeconds: newBalanceSeconds,
-        remarks: "Purchased 180 mins Preferred Gender Text Pack (₹299 / International)",
+        remarks: "Purchased 180 mins Preferred Gender Text Pack (₹99 / International)",
       },
     });
   } else if (purchase.productType === ProductType.DATING_PASS_7D) {
@@ -129,7 +129,7 @@ export async function creditPurchase(purchaseId: string, paymentId?: string) {
         productType: purchase.productType,
         unitsSeconds: 7 * 24 * 3600,
         balanceAfterSeconds: Math.floor((newExpiry.getTime() - Date.now()) / 1000),
-        remarks: "Purchased 7-Day Premium Dating Pass (₹499 / International)",
+        remarks: "Purchased 7-Day Premium Dating Pass (₹399 / International)",
       },
     });
   }
@@ -173,7 +173,7 @@ router.get("/products", (req, res) => {
         id: ProductType.VIDEO_PACK_60M,
         name: "Preferred Gender Video Pack",
         tier: "PREMIUM",
-        priceRupees: 599,
+        priceRupees: 299,
         badge: "One-Time Pack",
         description: "Filter video connections by your preferred gender.",
         features: [
@@ -188,7 +188,7 @@ router.get("/products", (req, res) => {
         id: ProductType.TEXT_PACK_180M,
         name: "Preferred Gender Text Pack",
         tier: "PREMIUM",
-        priceRupees: 299,
+        priceRupees: 99,
         badge: "One-Time Pack",
         description: "Match with your preferred gender for live text conversations.",
         features: [
@@ -203,7 +203,7 @@ router.get("/products", (req, res) => {
         id: ProductType.DATING_PASS_7D,
         name: "Premium Dating Pass",
         tier: "PREMIUM",
-        priceRupees: 499,
+        priceRupees: 399,
         badge: "7-Day Access",
         description: "Continue discovering profiles after the free 15 mutual matches.",
         features: [
@@ -234,13 +234,13 @@ router.post(["/create-order", "/orders"], authMiddleware, async (req: AuthReques
     let amountPaise = 0;
     let description = "";
     if (productType === ProductType.VIDEO_PACK_60M) {
-      amountPaise = 59900; // ₹599
+      amountPaise = 29900; // ₹299
       description = "60 Mins Preferred Gender Video Pack";
     } else if (productType === ProductType.TEXT_PACK_180M) {
-      amountPaise = 29900; // ₹299
+      amountPaise = 9900; // ₹99
       description = "180 Mins Preferred Gender Text Pack";
     } else if (productType === ProductType.DATING_PASS_7D) {
-      amountPaise = 49900; // ₹499
+      amountPaise = 39900; // ₹399
       description = "7-Day Premium Dating Pass";
     } else if (req.body.amount || req.body.amountPaise) {
       amountPaise = Number(req.body.amount || req.body.amountPaise);

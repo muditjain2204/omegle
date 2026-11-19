@@ -247,7 +247,7 @@ export default function LandingPage() {
                       <div className="font-bold text-slate-900 text-xs">Preferred Gender Video</div>
                       <div className="text-[10px] text-slate-500">60 connected mins (Male/Female filter)</div>
                     </div>
-                    <span className="font-extrabold text-blue-800 text-xs">₹599</span>
+                    <span className="font-extrabold text-blue-800 text-xs">₹299</span>
                   </div>
 
                   <div className="p-2 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between">
@@ -255,7 +255,7 @@ export default function LandingPage() {
                       <div className="font-bold text-slate-900 text-xs">Preferred Gender Text</div>
                       <div className="text-[10px] text-slate-500">180 connected mins (3 hours)</div>
                     </div>
-                    <span className="font-extrabold text-blue-800 text-xs">₹299</span>
+                    <span className="font-extrabold text-blue-800 text-xs">₹99</span>
                   </div>
 
                   <div className="p-2 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between">
@@ -263,7 +263,7 @@ export default function LandingPage() {
                       <div className="font-bold text-slate-900 text-xs">Premium Dating Pass</div>
                       <div className="text-[10px] text-slate-500">7 days access after 15 free mutual matches</div>
                     </div>
-                    <span className="font-extrabold text-blue-800 text-xs">₹499</span>
+                    <span className="font-extrabold text-blue-800 text-xs">₹399</span>
                   </div>
                 </div>
               </div>

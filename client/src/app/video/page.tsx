@@ -1295,7 +1295,7 @@ export default function VideoChatPage() {
                       <div className="text-[10px] text-amber-700 mt-0.5">
                         {(user?.usageBalance?.paidVideoSecondsAvailable || 0) > 0
                           ? `${Math.floor((user?.usageBalance?.paidVideoSecondsAvailable || 0) / 60)} mins remaining`
-                          : "₹599 / 60 connected mins"}
+                          : "₹299 / 60 connected mins"}
                       </div>
                     </button>
                   </div>

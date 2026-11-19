@@ -101,7 +101,7 @@ export function setupSocketServer(httpServer: HTTPServer) {
           socket.emit("insufficient_balance", {
             type,
             requiredPack: type === "video" ? "VIDEO_PACK_60M" : "TEXT_PACK_180M",
-            priceRupees: type === "video" ? 599 : 299,
+            priceRupees: type === "video" ? 299 : 99,
             message: `Preferred Gender ${type === "video" ? "Video" : "Text"} requires a paid pack. Please recharge to continue.`,
           });
           return;

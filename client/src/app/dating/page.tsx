@@ -678,13 +678,13 @@ export default function DatingPage() {
                 <Crown className="h-6 w-6 mx-auto text-amber-200" />
                 <h3 className="text-base font-extrabold">You reached your 15 Free Mutual Matches!</h3>
                 <p className="text-xs text-amber-100 leading-relaxed">
-                  Upgrade to <strong>Dating Premium</strong> for ₹499 for 7 days of unlimited discovery and swipes. Your existing matches remain free forever!
+                  Upgrade to <strong>Dating Premium</strong> for ₹399 for 7 days of unlimited discovery and swipes. Your existing matches remain free forever!
                 </p>
                 <button
                   onClick={() => setIsPricingOpen(true)}
                   className="mt-2 px-5 py-2.5 rounded-xl bg-white text-amber-800 font-bold text-xs shadow hover:bg-amber-50 transition-colors cursor-pointer"
                 >
-                  Unlock 7-Day Dating Pass (₹499)
+                  Unlock 7-Day Dating Pass (₹399)
                 </button>
               </div>
             )}

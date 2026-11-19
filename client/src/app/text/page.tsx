@@ -389,7 +389,7 @@ export default function TextChatPage() {
                       <span className="truncate">Gender Filter</span>
                     </span>
                     <span className="text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 shrink-0">
-                      ₹299 Pack
+                      ₹99 Pack
                     </span>
                   </div>
                   <div className="hidden md:block text-[11px] text-slate-500 mt-1">
